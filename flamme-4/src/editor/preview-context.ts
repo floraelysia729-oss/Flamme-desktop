@@ -36,7 +36,7 @@ export function buildPreviewWidgetMask(
   const doc = view.state.doc.toString()
   const fm = scanFrontmatter(doc)
   const frontmatter =
-    fm && !(cursor >= fm.from && cursor <= fm.to) && shouldRenderWidget(view, fm, cursor)
+    fm && !(cursor >= fm.from && cursor < fm.to) && shouldRenderWidget(view, fm, cursor)
       ? fm
       : null
 

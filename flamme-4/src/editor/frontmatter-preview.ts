@@ -16,7 +16,18 @@ import {
   type FrontmatterField,
 } from './frontmatter-ranges'
 
-const hideSource = Decoration.replace({})
+function frontmatterLines(view: EditorView, from: number, to: number) {
+  const lines: ReturnType<EditorView['state']['doc']['lineAt']>[] = []
+  let pos = from
+  while (pos < to) {
+    const line = view.state.doc.lineAt(pos)
+    if (line.from >= to) break
+    lines.push(line)
+    if (line.to >= to) break
+    pos = line.to + 1
+  }
+  return lines
+}
 
 class FrontmatterWidget extends WidgetType {
   constructor(readonly fields: FrontmatterField[]) {
@@ -85,25 +96,30 @@ function pushCollapsedFrontmatter(
     deco: Decoration.widget({
       widget: new FrontmatterWidget(fields),
       side: 1,
-      block: true,
     }),
   })
 
-  let pos = from
-  while (pos <= to) {
-    const line = view.state.doc.lineAt(pos)
+  for (const line of frontmatterLines(view, from, to)) {
     pending.push({
       from: line.from,
       to: line.from,
       deco: Decoration.line({ class: 'cm-frontmatter-src-hidden' }),
     })
-    const lineStart = Math.max(line.from, from)
-    const lineEnd = Math.min(line.to, to)
-    if (lineStart < lineEnd) {
-      pending.push({ from: lineStart, to: lineEnd, deco: hideSource })
-    }
-    if (line.to >= to) break
-    pos = line.to + 1
+  }
+}
+
+function pushEditingFrontmatter(
+  pending: { from: number; to: number; deco: Decoration }[],
+  view: EditorView,
+  from: number,
+  to: number,
+) {
+  for (const line of frontmatterLines(view, from, to)) {
+    pending.push({
+      from: line.from,
+      to: line.from,
+      deco: Decoration.line({ class: 'cm-frontmatter-editing' }),
+    })
   }
 }
 
@@ -114,16 +130,12 @@ function buildFrontmatterDecorations(view: EditorView): DecorationSet {
   const pending: { from: number; to: number; deco: Decoration }[] = []
 
   if (fm) {
-    const editing = head >= fm.from && head <= fm.to
+    const editing = head >= fm.from && head < fm.to
     if (!editing) {
       const fields = parseFrontmatterFields(fm.yamlText)
       pushCollapsedFrontmatter(view, pending, fm.from, fm.to, fields)
     } else {
-      pending.push({
-        from: fm.from,
-        to: fm.to,
-        deco: Decoration.mark({ class: 'cm-frontmatter-editing' }),
-      })
+      pushEditingFrontmatter(pending, view, fm.from, fm.to)
     }
   }
 

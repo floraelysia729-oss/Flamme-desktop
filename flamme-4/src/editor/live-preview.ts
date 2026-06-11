@@ -11,7 +11,6 @@ import {
 import { syntaxTree } from '@codemirror/language'
 import { RangeSetBuilder } from '@codemirror/state'
 import { blockquoteFenceLineRange, lineInBlockquoteFence } from './blockquote-code'
-import { scanFrontmatter } from './frontmatter-ranges'
 import { buildPreviewWidgetMask, posInRanges } from './preview-context'
 
 // Shared decoration instances (avoid creating new ones per range)
@@ -38,9 +37,6 @@ function build(view: EditorView): DecorationSet {
   const cursorLine = view.state.doc.lineAt(cursor).number
   const mask = buildPreviewWidgetMask(view, cursor)
   const fmWidget = mask.frontmatter
-  const rawFm = scanFrontmatter(view.state.doc.toString())
-  const cursorInFrontmatter =
-    rawFm !== null && cursor >= rawFm.from && cursor <= rawFm.to
 
   const ranges: { from: number; to: number }[] = []
 
@@ -128,11 +124,8 @@ function build(view: EditorView): DecorationSet {
           ranges.push({ from: node.from, to: node.to })
           break
 
-        // YAML frontmatter --- delimiters
+        // YAML frontmatter --- delimiters (skip — frontmatter-preview handles display)
         case 'DashLine':
-          if (cursorInFrontmatter && nodeLine !== cursorLine) {
-            ranges.push({ from: node.from, to: node.to })
-          }
           break
       }
     },
