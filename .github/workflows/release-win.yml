@@ -38,7 +38,7 @@ jobs:
 
       - name: Build Tauri bundles
         working-directory: flamme-4
-        run: npm run tauri:build
+        run: npm run tauri:build:ci
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
