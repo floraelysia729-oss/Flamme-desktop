@@ -19,6 +19,12 @@ from dotenv import load_dotenv, find_dotenv
 
 def _load_dotenv():
     """加载 .env 文件（.env 优先于系统环境变量）"""
+    data_dir = os.environ.get("FLAMME_DATA_DIR", "").strip()
+    if data_dir:
+        env_file = Path(data_dir) / ".env"
+        if env_file.is_file():
+            load_dotenv(env_file, override=True)
+            return
     env_path = find_dotenv(usecwd=True)
     if env_path:
         load_dotenv(env_path, override=True)

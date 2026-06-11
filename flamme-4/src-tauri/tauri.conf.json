@@ -31,7 +31,10 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["msi", "nsis"],
+    "resources": {
+      "binaries/flamme-api/": "flamme-api/"
+    },
     "icon": [
       "icons/icon.png",
       "icons/icon.ico",

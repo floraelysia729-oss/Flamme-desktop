@@ -18,7 +18,11 @@ pub fn run() {
             let backend_dir = sidecar::resolve_backend_dir().unwrap_or_else(|_| {
                 std::path::PathBuf::from(".")
             });
-            SidecarState::idle(backend_dir)
+            let data_dir = std::env::var_os("APPDATA")
+                .map(std::path::PathBuf::from)
+                .map(|p| p.join("com.llmwiki.flamme4"))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            SidecarState::idle(backend_dir, data_dir)
         }
     };
 

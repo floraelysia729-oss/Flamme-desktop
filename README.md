@@ -6,83 +6,93 @@
 
 Obsidian 插件版请使用 [Flamme](https://github.com/floraelysia729-oss/Flamme)。
 
-## 前置条件
+---
+
+## 普通用户：下载安装（无需终端）
+
+1. 打开 [Releases](https://github.com/floraelysia729-oss/Flamme-desktop/releases)
+2. 下载 `FLAMME_*-setup.exe` 或 `.msi`
+3. 双击安装，从开始菜单打开 **FLAMME**
+4. 首次启动会在 `%APPDATA%\com.llmwiki.flamme4\.env` 生成配置模板
+5. 在应用 **设置** 中填入 API Key，或直接编辑上述 `.env`
+
+> Windows 可能提示「未签名应用」——目前尚未做代码签名，选择仍要运行即可。
+
+---
+
+## 开发者：从源码构建
+
+### 前置条件
 
 - **Python** 3.10+
 - **Node.js** 18+
-- **Rust**（Tauri 构建，见 [Tauri 前置依赖](https://v2.tauri.app/start/prerequisites/)）
+- **Rust**（[Tauri 前置依赖](https://v2.tauri.app/start/prerequisites/)）
 - API Keys：至少需要 Chat LLM 和 Embedding 各一个
 
-## 快速开始
-
-### 1. 克隆仓库
+### 1. 克隆
 
 ```bash
 git clone https://github.com/floraelysia729-oss/Flamme-desktop.git
 cd Flamme-desktop
 ```
 
-### 2. 安装并配置后端
+### 2. 后端（开发模式）
 
 ```bash
 cd flamme-backend
 python -m venv venv
-
-# Windows
-venv\Scripts\activate
-# macOS / Linux
-source venv/bin/activate
-
+venv\Scripts\activate          # Windows
 pip install -e .
-cp .env.example .env
-# 编辑 .env，填入 API Key
+cp .env.example .env             # 填入 API Key
 cd ..
 ```
 
-### 3. 安装前端依赖
+### 3. 前端
 
 ```bash
 cd flamme-4
 npm install
+npm run tauri:dev                # 开发模式，自动起 Python sidecar
 ```
 
-### 4. 开发模式
+### 4. 构建 Windows 安装包
 
 ```bash
-npm run tauri:dev
+cd flamme-4
+npm run release:win              # PyInstaller 后端 + Tauri MSI/NSIS
 ```
 
-Tauri 会自动启动 Python 后端（默认端口 `8765`）。启动后访问 `http://localhost:8765` 可验证 API。
+产物目录：
 
-### 5. 构建安装包
+- `flamme-4/src-tauri/target/release/bundle/nsis/*-setup.exe`
+- `flamme-4/src-tauri/target/release/bundle/msi/*.msi`
+
+发布 tag（触发 GitHub Actions）：`git tag desktop-v0.1.0 && git push origin desktop-v0.1.0`
+
+### 5. 本地快捷方式（开发用）
 
 ```bash
-npm run tauri:build
+npm run create-shortcut          # 指向 target/release/FLAMME.exe
 ```
 
-Windows 可创建桌面快捷方式（无 exe 或源码更新时会先构建）：
-
-```bash
-npm run create-shortcut
-```
+---
 
 ## 目录结构
 
 | 目录 | 说明 |
 |------|------|
-| `flamme-4/` | React 19 + Tauri v2 桌面壳（编辑器、图谱、对话等） |
-| `flamme-backend/` | Python FastAPI 后端（Agent、检索、图谱、摄入） |
+| `flamme-4/` | React 19 + Tauri v2 桌面壳 |
+| `flamme-backend/` | Python FastAPI 后端 |
 
 ## 环境变量
 
-在 `flamme-backend/.env` 中配置，详见 `flamme-backend/.env.example`。
+| 场景 | 配置文件 |
+|------|----------|
+| 开发 | `flamme-backend/.env` |
+| 已安装应用 | `%APPDATA%\com.llmwiki.flamme4\.env` |
 
-| 变量 | 用途 |
-|------|------|
-| `LLM_API_KEY` | Chat 模型 |
-| `EMBED_API_KEY` | 向量嵌入 |
-| `MINERU_API_TOKEN` | PDF/PPT 解析（可选） |
+详见 `flamme-backend/.env.example`。
 
 ## 与 Obsidian 版的关系
 
-桌面端与 [Flamme Obsidian 插件](https://github.com/floraelysia729-oss/Flamme) 共用同一套 API 设计。桌面端通过 Tauri 直接读写本地 Vault，不依赖 Obsidian。
+桌面端与 [Flamme Obsidian 插件](https://github.com/floraelysia729-oss/Flamme) 共用 API 设计。桌面端通过 Tauri 直接读写本地 Vault，不依赖 Obsidian。

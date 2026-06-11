@@ -11,6 +11,8 @@
     "tauri": "tauri",
     "tauri:dev": "npm run icons && tauri dev",
     "tauri:build": "npm run icons && tauri build",
+    "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../flamme-backend/scripts/build_sidecar.ps1",
+    "release:win": "npm run build:sidecar && npm run tauri:build",
     "create-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1",
     "icons": "python branding/generate_app_icon.py && tauri icon branding/app-icon-square.png"
   },

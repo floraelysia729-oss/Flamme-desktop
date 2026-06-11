@@ -1,7 +1,7 @@
 //! Python FastAPI sidecar — "Fire Early" (§4.1-A)
 //!
-//! 在 Tauri 窗口创建前启动 `python -m src.api.app`，退出时终止子进程。
-//! 若 8765 已有健康响应则复用，不重复 spawn。
+//! Dev: `python -m src.api.app` in repo `flamme-backend/`.
+//! Release: bundled `resources/flamme-api/flamme-api.exe` (PyInstaller onedir).
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 const DEFAULT_PORT: u16 = 8765;
 const READY_POLL_MS: u64 = 200;
 const READY_TIMEOUT_SECS: u64 = 90;
+const APP_DATA_DIR_NAME: &str = "com.llmwiki.flamme4";
 
 pub struct SidecarState {
     inner: Mutex<SidecarInner>,
@@ -23,6 +24,18 @@ struct SidecarInner {
     spawned_by_us: bool,
     port: u16,
     backend_dir: PathBuf,
+    data_dir: PathBuf,
+}
+
+enum SidecarLaunch {
+    Python {
+        python: PathBuf,
+        backend_dir: PathBuf,
+    },
+    Bundled {
+        exe: PathBuf,
+        backend_dir: PathBuf,
+    },
 }
 
 impl SidecarState {
@@ -32,8 +45,9 @@ impl SidecarState {
             .unwrap_or(false)
         {
             log::info!("FLAMME_SKIP_SIDECAR set — not spawning Python");
-            let backend_dir = resolve_backend_dir()?;
-            return Ok(Self::idle(backend_dir));
+            let backend_dir = resolve_dev_backend_dir()?;
+            let data_dir = app_data_dir();
+            return Ok(Self::idle(backend_dir, data_dir));
         }
 
         let port = std::env::var("FLAMME_API_PORT")
@@ -41,7 +55,15 @@ impl SidecarState {
             .and_then(|s| s.parse().ok())
             .unwrap_or(DEFAULT_PORT);
 
-        let backend_dir = resolve_backend_dir()?;
+        let data_dir = app_data_dir();
+        let launch = resolve_sidecar_launch()?;
+        let backend_dir = match &launch {
+            SidecarLaunch::Python { backend_dir, .. } | SidecarLaunch::Bundled { backend_dir, .. } => {
+                backend_dir.clone()
+            }
+        };
+
+        ensure_app_data(&data_dir, bundled_env_example())?;
 
         if is_api_up(port) {
             log::info!(
@@ -54,30 +76,49 @@ impl SidecarState {
                     spawned_by_us: false,
                     port,
                     backend_dir,
+                    data_dir,
                 }),
             });
         }
 
-        let python = resolve_python_exe(&backend_dir)?;
-        log::info!(
-            "Spawning Python sidecar: {} -m src.api.app (cwd={})",
-            python.display(),
-            backend_dir.display()
-        );
-
-        let log_path = backend_log_file(&backend_dir);
+        let log_path = backend_log_file(&data_dir);
         if let Some(parent) = log_path.parent() {
             let _ = std::fs::create_dir_all(parent);
         }
 
-        let mut cmd = Command::new(&python);
-        cmd.args(["-m", "src.api.app"])
-            .current_dir(&backend_dir)
-            .env("FLAMME_BACKEND_DIR", &backend_dir)
+        let mut cmd = match &launch {
+            SidecarLaunch::Python { python, backend_dir } => {
+                log::info!(
+                    "Spawning Python sidecar: {} -m src.api.app (cwd={})",
+                    python.display(),
+                    backend_dir.display()
+                );
+                let mut c = Command::new(python);
+                c.args(["-m", "src.api.app"]).current_dir(backend_dir);
+                c
+            }
+            SidecarLaunch::Bundled { exe, backend_dir } => {
+                log::info!(
+                    "Spawning bundled sidecar: {} (cwd={})",
+                    exe.display(),
+                    backend_dir.display()
+                );
+                let mut c = Command::new(exe);
+                c.current_dir(backend_dir);
+                c
+            }
+        };
+
+        cmd.env("FLAMME_BACKEND_DIR", &backend_dir)
+            .env("FLAMME_DATA_DIR", &data_dir)
             .env("PYTHONUNBUFFERED", "1")
             .env(
                 "FLAMME_LOG_LEVEL",
-                if cfg!(debug_assertions) { "DEBUG" } else { "INFO" },
+                if cfg!(debug_assertions) {
+                    "DEBUG"
+                } else {
+                    "INFO"
+                },
             )
             .env("FLAMME_LOG_FILE", &log_path)
             .stdin(Stdio::null())
@@ -95,7 +136,7 @@ impl SidecarState {
 
         let mut child = cmd
             .spawn()
-            .map_err(|e| format!("failed to spawn Python ({}): {e}", python.display()))?;
+            .map_err(|e| format!("failed to spawn sidecar: {e}"))?;
 
         drain_child_stdio(&mut child, &log_path);
         log::info!("Python 日志文件: {}", log_path.display());
@@ -106,6 +147,7 @@ impl SidecarState {
                 spawned_by_us: true,
                 port,
                 backend_dir,
+                data_dir,
             }),
         };
 
@@ -125,14 +167,14 @@ impl SidecarState {
         Ok(state)
     }
 
-    /// 启动失败时仍注册 state，便于 `sidecar_status` 查询。
-    pub fn idle(backend_dir: PathBuf) -> Self {
+    pub fn idle(backend_dir: PathBuf, data_dir: PathBuf) -> Self {
         Self {
             inner: Mutex::new(SidecarInner {
                 child: None,
                 spawned_by_us: false,
                 port: DEFAULT_PORT,
                 backend_dir,
+                data_dir,
             }),
         }
     }
@@ -146,7 +188,6 @@ impl SidecarState {
         is_api_up(port)
     }
 
-    /// 应用退出时显式调用（勿仅依赖 Drop）。
     pub fn shutdown(&self) {
         let mut guard = match self.inner.lock() {
             Ok(g) => g,
@@ -168,7 +209,7 @@ impl SidecarState {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         };
-        backend_log_file(&guard.backend_dir)
+        backend_log_file(&guard.data_dir)
     }
 
     pub fn status_line(&self) -> String {
@@ -185,11 +226,12 @@ impl SidecarState {
             "none"
         };
         format!(
-            "port={} ready={} source={} backend={}",
+            "port={} ready={} source={} backend={} data={}",
             guard.port,
             up,
             spawn,
-            guard.backend_dir.display()
+            guard.backend_dir.display(),
+            guard.data_dir.display()
         )
     }
 }
@@ -200,7 +242,6 @@ impl Drop for SidecarState {
     }
 }
 
-/// 终止 sidecar 进程（Windows 上杀整棵进程树，避免 uvicorn/python 残留）
 fn kill_child_process(child: &mut Child) {
     let pid = child.id();
 
@@ -231,8 +272,36 @@ fn kill_child_process(child: &mut Child) {
     }
 }
 
-/// 解析 `4.0/flamme-backend`：CARGO_MANIFEST_DIR 的上两级 + flamme-backend，或 `FLAMME_BACKEND_DIR`。
+fn resolve_sidecar_launch() -> Result<SidecarLaunch, String> {
+    if cfg!(debug_assertions) {
+        let backend_dir = resolve_dev_backend_dir()?;
+        let python = resolve_python_exe(&backend_dir)?;
+        return Ok(SidecarLaunch::Python {
+            python,
+            backend_dir,
+        });
+    }
+
+    if let Some((exe, backend_dir)) = resolve_bundled_api() {
+        return Ok(SidecarLaunch::Bundled { exe, backend_dir });
+    }
+
+    Err(
+        "bundled flamme-api.exe not found; run npm run build:sidecar before tauri build".into(),
+    )
+}
+
+/// Dev: `4.0/flamme-backend` relative to CARGO_MANIFEST_DIR, or `FLAMME_BACKEND_DIR`.
 pub fn resolve_backend_dir() -> Result<PathBuf, String> {
+    if cfg!(debug_assertions) {
+        return resolve_dev_backend_dir();
+    }
+    resolve_bundled_api()
+        .map(|(_, dir)| dir)
+        .ok_or_else(|| "bundled backend not found".into())
+}
+
+fn resolve_dev_backend_dir() -> Result<PathBuf, String> {
     if let Ok(dir) = std::env::var("FLAMME_BACKEND_DIR") {
         let p = PathBuf::from(dir);
         if p.is_dir() {
@@ -243,14 +312,96 @@ pub fn resolve_backend_dir() -> Result<PathBuf, String> {
 
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let candidate = manifest.join("../../flamme-backend");
-    candidate
-        .canonicalize()
-        .map_err(|e| {
-            format!(
-                "cannot find flamme-backend at {} ({e}); set FLAMME_BACKEND_DIR",
-                candidate.display()
-            )
-        })
+    candidate.canonicalize().map_err(|e| {
+        format!(
+            "cannot find flamme-backend at {} ({e}); set FLAMME_BACKEND_DIR",
+            candidate.display()
+        )
+    })
+}
+
+fn install_resources_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().ok()?;
+    let resources = exe.parent()?.join("resources");
+    if resources.is_dir() {
+        Some(resources)
+    } else {
+        None
+    }
+}
+
+fn resolve_bundled_api() -> Option<(PathBuf, PathBuf)> {
+    let resources = install_resources_dir()?;
+    let backend_dir = resources.join("flamme-api");
+    let exe = backend_dir.join("flamme-api.exe");
+    if exe.is_file() {
+        Some((exe, backend_dir))
+    } else {
+        None
+    }
+}
+
+fn bundled_env_example() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        return None;
+    }
+    let resources = install_resources_dir()?;
+    let example = resources.join("flamme-api").join(".env.example");
+    if example.is_file() {
+        Some(example)
+    } else {
+        None
+    }
+}
+
+fn app_data_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("FLAMME_DATA_DIR") {
+        let p = PathBuf::from(dir);
+        if !p.as_os_str().is_empty() {
+            return p;
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        if let Some(appdata) = std::env::var_os("APPDATA") {
+            return PathBuf::from(appdata).join(APP_DATA_DIR_NAME);
+        }
+    }
+
+    if let Some(home) = std::env::var_os("HOME") {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join(APP_DATA_DIR_NAME);
+    }
+
+    PathBuf::from(".").join(APP_DATA_DIR_NAME)
+}
+
+fn ensure_app_data(data_dir: &Path, env_example: Option<PathBuf>) -> Result<(), String> {
+    std::fs::create_dir_all(data_dir)
+        .map_err(|e| format!("cannot create app data dir {}: {e}", data_dir.display()))?;
+
+    let env_file = data_dir.join(".env");
+    if env_file.exists() {
+        return Ok(());
+    }
+
+    if let Some(example) = env_example {
+        if example.is_file() {
+            std::fs::copy(&example, &env_file).map_err(|e| {
+                format!(
+                    "cannot copy {} -> {}: {e}",
+                    example.display(),
+                    env_file.display()
+                )
+            })?;
+            log::info!("Created default .env at {}", env_file.display());
+        }
+    }
+
+    Ok(())
 }
 
 fn resolve_python_exe(backend_dir: &Path) -> Result<PathBuf, String> {
@@ -338,11 +489,10 @@ fn wait_until_ready(port: u16, timeout_secs: u64) -> bool {
     false
 }
 
-fn backend_log_file(backend_dir: &Path) -> PathBuf {
-    backend_dir.join("logs").join("flamme-api.log")
+fn backend_log_file(data_dir: &Path) -> PathBuf {
+    data_dir.join("logs").join("flamme-api.log")
 }
 
-/// 将 Python 子进程 stdout/stderr 追加到日志文件（否则 CREATE_NO_WINDOW 下看不到任何输出）
 fn drain_child_stdio(child: &mut Child, log_path: &Path) {
     let stderr = child.stderr.take();
     let stdout = child.stdout.take();
@@ -386,9 +536,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn resolve_backend_dir_from_manifest() {
-        let dir = resolve_backend_dir().expect("flamme-backend should exist in repo");
+    fn resolve_dev_backend_dir_from_manifest() {
+        let dir = resolve_dev_backend_dir().expect("flamme-backend should exist in repo");
         assert!(dir.join("pyproject.toml").is_file());
         assert!(dir.join("src/api/app.py").is_file());
+    }
+
+    #[test]
+    fn app_data_dir_is_nonempty() {
+        let dir = app_data_dir();
+        assert!(!dir.as_os_str().is_empty());
     }
 }
