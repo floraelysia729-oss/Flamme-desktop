@@ -1,7 +1,7 @@
 //! Python FastAPI sidecar — "Fire Early" (§4.1-A)
 //!
 //! Dev: `python -m src.api.app` in repo `flamme-backend/`.
-//! Release: bundled `resources/flamme-api/flamme-api.exe` (PyInstaller onedir).
+//! Release: bundled `flamme-api/flamme-api.exe` next to the app (PyInstaller onedir).
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
@@ -320,38 +320,40 @@ fn resolve_dev_backend_dir() -> Result<PathBuf, String> {
     })
 }
 
-fn install_resources_dir() -> Option<PathBuf> {
-    let exe = std::env::current_exe().ok()?;
-    let resources = exe.parent()?.join("resources");
-    if resources.is_dir() {
-        Some(resources)
-    } else {
-        None
-    }
+/// Candidate backend dirs for the PyInstaller onedir (Tauri `bundle.resources`).
+fn bundled_backend_dirs() -> Vec<PathBuf> {
+    let Some(exe_dir) = std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())) else {
+        return Vec::new();
+    };
+    vec![
+        // Tauri 2 NSIS / per-user install: `<install>/flamme-api/`
+        exe_dir.join("flamme-api"),
+        // Unpacked / legacy layout: `<exe>/resources/flamme-api/`
+        exe_dir.join("resources").join("flamme-api"),
+    ]
 }
 
 fn resolve_bundled_api() -> Option<(PathBuf, PathBuf)> {
-    let resources = install_resources_dir()?;
-    let backend_dir = resources.join("flamme-api");
-    let exe = backend_dir.join("flamme-api.exe");
-    if exe.is_file() {
-        Some((exe, backend_dir))
-    } else {
-        None
+    for backend_dir in bundled_backend_dirs() {
+        let exe = backend_dir.join("flamme-api.exe");
+        if exe.is_file() {
+            return Some((exe, backend_dir));
+        }
     }
+    None
 }
 
 fn bundled_env_example() -> Option<PathBuf> {
     if cfg!(debug_assertions) {
         return None;
     }
-    let resources = install_resources_dir()?;
-    let example = resources.join("flamme-api").join(".env.example");
-    if example.is_file() {
-        Some(example)
-    } else {
-        None
+    for backend_dir in bundled_backend_dirs() {
+        let example = backend_dir.join(".env.example");
+        if example.is_file() {
+            return Some(example);
+        }
     }
+    None
 }
 
 fn app_data_dir() -> PathBuf {

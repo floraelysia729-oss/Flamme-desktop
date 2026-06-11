@@ -13,6 +13,7 @@ entry = spec_dir / "pyinstaller_entry.py"
 
 datas = [
     (str(backend_root / "agents"), "agents"),
+    (str(backend_root / "src/db/schema.sql"), "src/db"),
     (str(backend_root / ".env.example"), "."),
 ]
 datas += collect_data_files("jieba")

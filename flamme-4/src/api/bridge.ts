@@ -366,6 +366,7 @@ export interface SidecarStatus {
   ready: boolean
   port: number
   detail: string
+  log_file?: string
 }
 
 export async function getSidecarStatus(): Promise<SidecarStatus | null> {

@@ -46,8 +46,12 @@ export async function bootDesktop(
   const { waitForPythonSidecar } = await import('./bridge')
   const backendOk = await waitForPythonSidecar(90_000)
   if (!backendOk) {
-    const err =
-      'AI 引擎未能启动。请确认 flamme-backend 已安装依赖（.venv + pip install -e .）'
+    const { getSidecarStatus } = await import('./bridge')
+    const st = await getSidecarStatus()
+    const logHint = st?.log_file
+      ? `日志：${st.log_file}`
+      : '日志：%APPDATA%\\com.llmwiki.flamme4\\logs\\flamme-api.log'
+    const err = `AI 引擎未能启动（90 秒内未响应）。${logHint}`
     onPhase?.('error', err)
     return { ok: false, error: err }
   }
