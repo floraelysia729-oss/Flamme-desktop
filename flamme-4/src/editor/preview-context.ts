@@ -5,12 +5,15 @@ import type { HtmlBlockRange } from './html-ranges'
 import { scanHtmlLineBlocks } from './html-ranges'
 import type { WikilinkRange } from './wikilink-ranges'
 import { scanWikilinks } from './wikilink-ranges'
+import type { FrontmatterRange } from './frontmatter-ranges'
+import { scanFrontmatter } from './frontmatter-ranges'
 import { shouldRenderWidget } from './viewport-scope'
 
 export interface PreviewWidgetMask {
   math: MathRange[]
   wikilinks: WikilinkRange[]
   html: HtmlBlockRange[]
+  frontmatter: FrontmatterRange | null
 }
 
 function activeWidgetRanges<T extends { from: number; to: number }>(
@@ -31,10 +34,17 @@ export function buildPreviewWidgetMask(
   cursor: number,
 ): PreviewWidgetMask {
   const doc = view.state.doc.toString()
+  const fm = scanFrontmatter(doc)
+  const frontmatter =
+    fm && !(cursor >= fm.from && cursor <= fm.to) && shouldRenderWidget(view, fm, cursor)
+      ? fm
+      : null
+
   return {
     math: activeWidgetRanges(view, cursor, scanMathRanges(doc)),
     wikilinks: activeWidgetRanges(view, cursor, scanWikilinks(doc)),
     html: activeWidgetRanges(view, cursor, scanHtmlLineBlocks(doc)),
+    frontmatter,
   }
 }
 

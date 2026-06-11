@@ -4,8 +4,9 @@ import { defaultKeymap, historyKeymap, history } from '@codemirror/commands'
 import type { ThemeColors } from '../theme/useThemeColors'
 import { getEditorTheme } from './theme'
 import { getMarkdownHighlightExtension } from './highlight'
-import { markdown } from '@codemirror/lang-markdown'
+import { editorMarkdownLanguage } from './markdown-language'
 import { getMarkdownKeymaps } from './keymaps'
+import { frontmatterPreviewPlugin } from './frontmatter-preview'
 import { livePreview } from './live-preview'
 import { wikilinkPlugin, wikilinkClickHandler } from './wikilinks'
 import { wikilinkHoverPlugin } from './wikilink-tooltip'
@@ -25,9 +26,10 @@ export function createEditor(
     EditorView.lineWrapping,
     history(),
     keymap.of([...defaultKeymap, ...historyKeymap, ...getMarkdownKeymaps()]),
-    markdown(),
+    editorMarkdownLanguage,
     editorThemeCompartment.of(getEditorTheme(colors)),
     highlightCompartment.of(getMarkdownHighlightExtension(colors)),
+    frontmatterPreviewPlugin,
     livePreview,
     mathPreviewPlugin,
     htmlPreviewPlugin,

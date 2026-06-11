@@ -620,6 +620,63 @@ body {
   margin: 0.5em 0 0.65em;
 }
 
+/* YAML frontmatter 属性卡片 */
+.cm-editor .cm-frontmatter-preview {
+  display: block;
+  margin: 0 0 0.75em;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: oklch(from var(--editor-meta-ink, var(--ink-muted)) l c h / 0.08);
+  border: 1px solid oklch(from var(--border) l c h / 0.35);
+  font-size: 0.88em;
+  line-height: 1.45;
+}
+
+.cm-editor .cm-frontmatter-preview__row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 0;
+}
+
+.cm-editor .cm-frontmatter-preview__row + .cm-frontmatter-preview__row {
+  margin-top: 2px;
+}
+
+.cm-editor .cm-frontmatter-preview__key {
+  flex: 0 0 auto;
+  min-width: 4.5em;
+  color: var(--editor-meta-ink, var(--ink-muted));
+  font-weight: 600;
+  font-family: var(--font-editor-mono);
+  font-size: 0.92em;
+}
+
+.cm-editor .cm-frontmatter-preview__value {
+  flex: 1 1 auto;
+  color: var(--editor-body-ink, var(--ink));
+  word-break: break-word;
+}
+
+.cm-editor .cm-frontmatter-preview__empty {
+  color: var(--editor-meta-ink, var(--ink-muted));
+  font-style: italic;
+}
+
+.cm-editor .cm-frontmatter-editing {
+  background: oklch(from var(--accent) l c h / 0.08);
+  border-radius: 4px;
+}
+
+.cm-editor .cm-line.cm-frontmatter-src-hidden {
+  height: 0 !important;
+  overflow: hidden;
+  line-height: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  visibility: hidden;
+}
+
 /* 整行 HTML 预览（表格等） */
 .cm-editor .cm-html-preview {
   display: block;

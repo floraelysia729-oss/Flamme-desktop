@@ -11,6 +11,7 @@ import {
 import { syntaxTree } from '@codemirror/language'
 import { RangeSetBuilder } from '@codemirror/state'
 import { blockquoteFenceLineRange, lineInBlockquoteFence } from './blockquote-code'
+import { scanFrontmatter } from './frontmatter-ranges'
 import { buildPreviewWidgetMask, posInRanges } from './preview-context'
 
 // Shared decoration instances (avoid creating new ones per range)
@@ -36,6 +37,10 @@ function build(view: EditorView): DecorationSet {
   const cursor = view.state.selection.main.head
   const cursorLine = view.state.doc.lineAt(cursor).number
   const mask = buildPreviewWidgetMask(view, cursor)
+  const fmWidget = mask.frontmatter
+  const rawFm = scanFrontmatter(view.state.doc.toString())
+  const cursorInFrontmatter =
+    rawFm !== null && cursor >= rawFm.from && cursor <= rawFm.to
 
   const ranges: { from: number; to: number }[] = []
 
@@ -43,6 +48,8 @@ function build(view: EditorView): DecorationSet {
   const tree = syntaxTree(view.state)
   tree.iterate({
     enter(node) {
+      if (fmWidget && node.from >= fmWidget.from && node.to <= fmWidget.to) return
+
       if (
         posInRanges(node.from, mask.wikilinks) ||
         posInRanges(node.to, mask.wikilinks) ||
@@ -121,9 +128,11 @@ function build(view: EditorView): DecorationSet {
           ranges.push({ from: node.from, to: node.to })
           break
 
-        // ProcessingInstruction — frontmatter delimiters ---
-        case 'ProcessingInstruction':
-          // Hide frontmatter on non-cursor lines
+        // YAML frontmatter --- delimiters
+        case 'DashLine':
+          if (cursorInFrontmatter && nodeLine !== cursorLine) {
+            ranges.push({ from: node.from, to: node.to })
+          }
           break
       }
     },

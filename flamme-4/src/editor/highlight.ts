@@ -1,5 +1,5 @@
-import { markdown } from '@codemirror/lang-markdown'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
+import { editorMarkdownLanguage } from './markdown-language'
 import { tags } from '@lezer/highlight'
 import type { Extension } from '@codemirror/state'
 import type { ThemeColors } from '../theme/useThemeColors'
@@ -41,5 +41,5 @@ export function getMarkdownHighlightExtension(colors: ThemeColors): Extension {
 }
 
 export function getMarkdownExtensions(colors: ThemeColors): Extension[] {
-  return [markdown(), getMarkdownHighlightExtension(colors)]
+  return [editorMarkdownLanguage, getMarkdownHighlightExtension(colors)]
 }
