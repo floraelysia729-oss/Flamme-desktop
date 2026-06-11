@@ -1,0 +1,212 @@
+"""Coordinator 编排器 — Worker Pool 模式
+
+Orchestrator 通过 dispatch/wait_for 派发重任务到 Worker。
+"""
+
+import json
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from src.agent.workers import IngestWorker, QueryWorker, LintWorker, BatchTagWorker
+from src.agent.worker import BaseWorker
+from src.db.client import SQLiteClient
+from src.tools.registry import ToolRegistry
+
+
+class Coordinator:
+    """Worker 调度器 — Orchestrator 的重任务执行后端"""
+
+    def __init__(self, db: SQLiteClient, tools: ToolRegistry,
+                 llm=None, brain_llm=None, embedding_store=None, llm_queue=None,
+                 max_workers: int = 3):
+        self._db = db
+        self._tools = tools
+        self._llm = llm
+        self._brain_llm = brain_llm
+        self._embedding_store = embedding_store
+        self._llm_queue = llm_queue
+        self._max_workers = max_workers
+
+        self._worker_classes: dict[str, type[BaseWorker]] = {
+            "ingest": IngestWorker,
+            "query": QueryWorker,
+            "lint": LintWorker,
+            "batch_tag": BatchTagWorker,
+        }
+
+    def _run_workers(self, task_ids: list[int]) -> list[dict]:
+        """启动 Worker Pool 执行任务（ingest 可多 worker 并行消费）"""
+        pending = self._db.get_tasks_by_status("claimed") + self._db.get_tasks_by_status("pending")
+        relevant = [t for t in pending if t["id"] in task_ids]
+        if not relevant:
+            return []
+
+        ingest_count = sum(1 for t in relevant if t["type"] == "ingest")
+        other_types = [
+            t for t in {t["type"] for t in relevant if t["type"] != "ingest"}
+            if t in self._worker_classes
+        ]
+
+        def _run_worker(worker_type: str, suffix: str = "") -> list[dict]:
+            worker_cls = self._worker_classes[worker_type]
+            worker_db = SQLiteClient(self._db._db_path, vault_path=self._db._vault_path)
+            try:
+                worker = worker_cls(
+                    worker_id=f"worker-{worker_type}{suffix}",
+                    db=worker_db,
+                    tools=self._tools,
+                    llm=self._llm,
+                    embedding_store=self._embedding_store,
+                    llm_queue=self._llm_queue,
+                )
+                return worker.run_loop()
+            finally:
+                worker_db.close()
+
+        pool_size = min(
+            self._max_workers,
+            max(ingest_count, 0) + len(other_types),
+        ) or 1
+
+        all_results = []
+        with ThreadPoolExecutor(max_workers=pool_size) as pool:
+            futures = {}
+            for i in range(min(self._max_workers, ingest_count) if ingest_count else 0):
+                fut = pool.submit(_run_worker, "ingest", f"-{i}")
+                futures[fut] = f"ingest-{i}"
+            for wt in other_types:
+                fut = pool.submit(_run_worker, wt)
+                futures[fut] = wt
+
+            for future in as_completed(futures):
+                try:
+                    results = future.result()
+                    all_results.extend(results)
+                except Exception as e:
+                    all_results.append({
+                        "_error": str(e),
+                        "_status": "failed",
+                        "type": futures[future],
+                    })
+
+        return all_results
+
+    def dispatch(self, worker_type: str, payload: dict) -> int:
+        """派发任务到指定 Worker 类型，返回 task_id"""
+        task_id = self._db.push_task(worker_type, payload, generation=0)
+        worker_cls = self._worker_classes.get(worker_type)
+        if not worker_cls:
+            raise ValueError(f"未知 Worker 类型: {worker_type}")
+
+        thread = threading.Thread(
+            target=self._run_single_task,
+            args=(worker_cls, worker_type, task_id),
+            daemon=True,
+        )
+        thread.start()
+        return task_id
+
+    def dispatch_batch(self, worker_type: str, payloads: list[dict]) -> list[int]:
+        """批量派发同类型任务，启动 Worker Pool 消费，返回 task_ids"""
+        if not payloads:
+            return []
+
+        task_ids = []
+        for payload in payloads:
+            tid = self._db.push_task(worker_type, payload, generation=0)
+            task_ids.append(tid)
+
+        thread = threading.Thread(
+            target=self._run_workers,
+            args=(task_ids,),
+            daemon=True,
+        )
+        thread.start()
+        return task_ids
+
+    def wait_for_batch(self, task_ids: list[int], timeout: float = 600,
+                       poll_interval: float = 2.0) -> list[dict]:
+        """等待批量任务全部完成"""
+        start = time.time()
+        remaining = set(task_ids)
+        results = {}
+
+        while remaining and time.time() - start < timeout:
+            for tid in list(remaining):
+                row = self._db._conn.execute(
+                    "SELECT status, payload FROM task_queue WHERE id = ?", (tid,)
+                ).fetchone()
+                if not row:
+                    results[tid] = {"error": f"任务不存在: {tid}"}
+                    remaining.discard(tid)
+                elif row["status"] in ("done", "failed"):
+                    payload = json.loads(row["payload"]) if row["payload"] else {}
+                    if row["status"] == "done":
+                        results[tid] = payload.get("result", payload)
+                    else:
+                        results[tid] = {"error": payload.get("_error", "任务失败")}
+                    remaining.discard(tid)
+            if remaining:
+                time.sleep(poll_interval)
+
+        for tid in remaining:
+            results[tid] = {"error": "超时"}
+
+        return [results.get(tid, {"error": "未知"}) for tid in task_ids]
+
+    def wait_for(self, task_id: int, timeout: float = 120) -> dict:
+        """等待任务完成，返回结果"""
+        start = time.time()
+        while time.time() - start < timeout:
+            row = self._db._conn.execute(
+                "SELECT status, payload FROM task_queue WHERE id = ?", (task_id,)
+            ).fetchone()
+            if not row:
+                return {"error": f"任务不存在: {task_id}"}
+
+            status = row["status"]
+            if status == "done":
+                payload = json.loads(row["payload"]) if row["payload"] else {}
+                return payload.get("result", payload)
+            if status == "failed":
+                payload = json.loads(row["payload"]) if row["payload"] else {}
+                return {"error": payload.get("_error", "任务失败")}
+
+            time.sleep(0.5)
+
+        row = self._db._conn.execute(
+            "SELECT status, claimed_by FROM task_queue WHERE id = ?",
+            (task_id,),
+        ).fetchone()
+        if row:
+            return {
+                "error": f"任务超时 ({timeout}s)",
+                "task_id": task_id,
+                "status": row["status"],
+                "claimed_by": row["claimed_by"],
+            }
+        return {"error": f"任务超时 ({timeout}s)", "task_id": task_id}
+
+    def _run_single_task(self, worker_cls, worker_type: str, task_id: int):
+        """在后台线程中执行单个 worker 任务"""
+        worker_db = SQLiteClient(self._db._db_path, vault_path=self._db._vault_path)
+        try:
+            worker = worker_cls(
+                worker_id=f"orch-{worker_type}-{task_id}",
+                db=worker_db,
+                tools=self._tools,
+                llm=self._llm,
+                embedding_store=self._embedding_store,
+                llm_queue=self._llm_queue,
+            )
+            result = worker.run_task(task_id)
+            if result is None:
+                row = worker_db._conn.execute(
+                    "SELECT status FROM task_queue WHERE id = ?",
+                    (task_id,),
+                ).fetchone()
+                if row and row["status"] in ("pending", "claimed"):
+                    worker_db.fail_task(task_id, "目标任务未被执行（认领失败）")
+        finally:
+            worker_db.close()

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <rect width="512" height="512" rx="108" fill="#F5F0EB"/>
+  <circle cx="248" cy="108" r="11" fill="#FF8C42" opacity="0.92"/>
+  <circle cx="276" cy="124" r="8" fill="#FFB347" opacity="0.85"/>
+  <circle cx="228" cy="126" r="6" fill="#FFB347" opacity="0.78"/>
+  <!-- ??????ingest Flame ???? + ??? logo ?????? -->
+  <g transform="translate(256 278) scale(2.85)">
+    <path
+      d="M0 -42 C-18 -22 -32 -2 -32 22 C-32 48 -18 64 0 68 C18 64 32 48 32 22 C32 -2 18 -22 0 -42 Z"
+      fill="url(#flameGrad)"
+      stroke="#2D2A26"
+      stroke-width="3.2"
+      stroke-linejoin="round"
+    />
+    <path
+      d="M-12 12 C-16 28 -12 44 -2 52 C-8 36 -10 24 -12 12 Z"
+      fill="#FFE8A3"
+      opacity="0.55"
+    />
+  </g>
+  <defs>
+    <linearGradient id="flameGrad" x1="256" y1="130" x2="256" y2="390" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFD97A"/>
+      <stop offset="0.45" stop-color="#FF9E7A"/>
+      <stop offset="1" stop-color="#FF6B6B"/>
+    </linearGradient>
+  </defs>
+</svg>

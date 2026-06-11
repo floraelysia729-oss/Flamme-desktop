@@ -1,0 +1,238 @@
+"""配置模块 — 从 .env 文件读取项目配置
+
+多角色 LLM 配置：
+  LLM_*     → 通用 chat（DeepSeek）
+  EMBED_*   → 向量嵌入（千问 DashScope）
+  BRAIN_*   → 多 Agent 编排大脑（GLM）
+  MINERU_*  → PDF 精准解析（MinerU API）
+  OCR_*     → 手写识别视觉模型（DashScope Qwen-VL）
+
+优先级：命令行参数 > .env 文件 > 环境变量 > 自动检测 > 默认值
+"""
+
+import os
+from pathlib import Path
+from dataclasses import dataclass
+
+from dotenv import load_dotenv, find_dotenv
+
+
+def _load_dotenv():
+    """加载 .env 文件（.env 优先于系统环境变量）"""
+    env_path = find_dotenv(usecwd=True)
+    if env_path:
+        load_dotenv(env_path, override=True)
+
+
+@dataclass
+class Config:
+    vault_path: str = ""
+    # --- Chat LLM (DeepSeek) ---
+    llm_api_key: str = ""
+    llm_base_url: str = "https://api.deepseek.com"
+    llm_model: str = "deepseek-chat"
+    # --- Embedding (千问 DashScope) ---
+    embed_api_key: str = ""
+    embed_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    embed_model: str = "text-embedding-v3"
+    embed_dim: int = 1024
+    # --- Brain LLM (DeepSeek — 多 Agent 编排大脑) ---
+    brain_api_key: str = ""
+    brain_base_url: str = "https://api.deepseek.com"
+    brain_model: str = "deepseek-chat"
+    # --- MinerU (PDF 精准解析) ---
+    mineru_api_token: str = ""
+    mineru_model_version: str = "vlm"
+    # --- Vision OCR (DashScope Qwen-VL — 手写识别) ---
+    ocr_api_key: str = ""
+    ocr_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    ocr_model: str = "qwen-vl-max"
+    # --- 运行时 ---
+    db_path: str = ""
+    max_concurrency: int = 2
+    log_level: str = "INFO"
+
+    def __post_init__(self):
+        if not self.vault_path:
+            self.vault_path = (
+                os.environ.get("FLAMME_VAULT_PATH")
+                or os.environ.get("LLM_WIKI_VAULT")
+                or detect_vault()
+            )
+        self.rebind_vault_paths()
+
+    def rebind_vault_paths(self) -> None:
+        """vault_path 变更后同步 .wiki / db 等派生路径（避免 header 覆盖 vault 后仍用旧 db）。"""
+        if not self.vault_path:
+            return
+        wiki_dir = Path(self.vault_path).expanduser() / ".wiki"
+        wiki_dir.mkdir(parents=True, exist_ok=True)
+        self._wiki_dir = str(wiki_dir)
+        self.db_path = str(wiki_dir / "knowledge.db")
+
+    # ── 派生路径 ──
+    @property
+    def wiki_dir(self) -> str:
+        return self._wiki_dir
+
+    @property
+    def embeddings_dir(self) -> str:
+        return str(Path(self._wiki_dir) / "embeddings")
+
+    @property
+    def conversations_db(self) -> str:
+        return str(Path(self._wiki_dir) / "conversations.db")
+
+    @property
+    def graph_json(self) -> str:
+        return str(Path(self._wiki_dir) / "graph.json")
+
+    # ── 路径工具 ──
+    def to_relpath(self, path: str) -> str:
+        """绝对路径 → vault 内相对路径（正斜杠）"""
+        if not path:
+            return path
+        p = Path(path)
+        try:
+            return str(p.relative_to(self.vault_path)).replace("\\", "/")
+        except ValueError:
+            return str(p).replace("\\", "/")
+
+    def to_abspath(self, relpath: str) -> str:
+        """相对路径 → 绝对路径"""
+        if not relpath:
+            return relpath
+        return str(Path(self.vault_path) / relpath.replace("\\", "/"))
+
+    @staticmethod
+    def is_source_doc(relpath: str) -> bool:
+        """判断归一化后的相对路径是否为用户源资料"""
+        from src.tools.sync import is_source_doc as _is_source_doc
+        return _is_source_doc(relpath)
+
+
+def detect_vault() -> str:
+    """从当前目录向上查找包含 .obsidian/ 的目录。
+    找不到时扫描 cwd 直接子目录，避免把项目本身误当 vault。
+    """
+    current = Path.cwd()
+    # 1. 向上查找
+    for parent in [current] + list(current.parents):
+        if (parent / ".obsidian").is_dir():
+            return str(parent)
+    # 2. 向下扫描一层子目录
+    for child in sorted(current.iterdir()):
+        if child.is_dir() and (child / ".obsidian").is_dir():
+            return str(child)
+    # 3. 都没找到 → fallback 到 cwd（兼容无 .obsidian 的纯文件夹）
+    #    API 模式下 per-request config 会通过 X-Vault-Path 覆盖，此处 warning 是噪声
+    import logging
+    logging.getLogger(__name__).debug(
+        "未找到 .obsidian 目录，vault 将使用当前目录: %s。"
+        "建议在 .env 中设置 LLM_WIKI_VAULT 指向你的 Obsidian vault。",
+        current,
+    )
+    return str(current)
+
+
+def load_config(**overrides) -> Config:
+    """加载配置，合并 .env 文件、环境变量和命令行参数"""
+    _load_dotenv()
+
+    cfg = Config(
+        vault_path=os.environ.get("FLAMME_VAULT_PATH") or os.environ.get("LLM_WIKI_VAULT", ""),
+        # Chat (DeepSeek)
+        llm_api_key=os.environ.get("LLM_API_KEY", ""),
+        llm_base_url=os.environ.get("LLM_BASE_URL", "https://api.deepseek.com"),
+        llm_model=os.environ.get("LLM_MODEL", "deepseek-chat"),
+        # Embedding (千问)
+        embed_api_key=os.environ.get("EMBED_API_KEY", os.environ.get("DASHSCOPE_API_KEY", "")),
+        embed_base_url=os.environ.get("EMBED_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        embed_model=os.environ.get("EMBED_MODEL", "text-embedding-v3"),
+        embed_dim=int(os.environ.get("EMBED_DIM", "1024")),
+        # Brain (DeepSeek)
+        brain_api_key=os.environ.get("BRAIN_API_KEY", os.environ.get("ZHIPU_API_KEY", "")),
+        brain_base_url=os.environ.get("BRAIN_BASE_URL", "https://api.deepseek.com"),
+        brain_model=os.environ.get("BRAIN_MODEL", "deepseek-chat"),
+        # MinerU
+        mineru_api_token=os.environ.get("MINERU_API_TOKEN", ""),
+        mineru_model_version=os.environ.get("MINERU_MODEL_VERSION", "vlm"),
+        # Vision OCR (fallback: 复用 embedding 的 DashScope key)
+        ocr_api_key=os.environ.get("OCR_API_KEY", os.environ.get("EMBED_API_KEY", os.environ.get("DASHSCOPE_API_KEY", ""))),
+        ocr_base_url=os.environ.get("OCR_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1"),
+        ocr_model=os.environ.get("OCR_MODEL", "qwen-vl-max"),
+        # Runtime
+        db_path=os.environ.get("LLM_WIKI_DB", ""),
+        max_concurrency=int(os.environ.get("LLM_MAX_CONCURRENCY", "2")),
+        log_level=os.environ.get("LLM_LOG_LEVEL", "INFO"),
+    )
+    # 命令行 / header 覆盖
+    vault_overridden = False
+    for k, v in overrides.items():
+        if v is not None and hasattr(cfg, k):
+            setattr(cfg, k, v)
+            if k == "vault_path":
+                vault_overridden = True
+    if vault_overridden:
+        cfg.rebind_vault_paths()
+    return cfg
+
+
+def _header_get(headers: dict, name: str) -> str:
+    """统一读取 header（兼容大小写）并去除首尾空白。"""
+    lower = name.lower()
+    for k, v in headers.items():
+        if k.lower() == lower and v is not None:
+            return str(v).strip()
+    return ""
+
+
+def config_from_headers(headers: dict, base_cfg: Config | None = None) -> Config:
+    """从插件请求 headers 构建 Config（用户自带 key 模式）
+
+    插件通过以下 header 传入配置：
+      X-Vault-Path        → vault_path
+      X-LLM-Key           → llm_api_key
+      X-Embed-Key         → embed_api_key
+      X-Brain-Key         → brain_api_key
+      X-MinerU-Token      → mineru_api_token
+    其他配置继承 .env 或默认值。
+    """
+    overrides = {}
+    vault = _header_get(headers, "x-vault-path")
+    llm_key = _header_get(headers, "x-llm-key")
+    embed_key = _header_get(headers, "x-embed-key")
+    brain_key = _header_get(headers, "x-brain-key")
+    mineru = _header_get(headers, "x-mineru-token")
+
+    if vault:
+        overrides["vault_path"] = vault
+    if llm_key:
+        overrides["llm_api_key"] = llm_key
+    if embed_key:
+        overrides["embed_api_key"] = embed_key
+    if brain_key:
+        overrides["brain_api_key"] = brain_key
+    if mineru:
+        overrides["mineru_api_token"] = mineru
+
+    import logging as _log
+    _log.getLogger(__name__).info(
+        "config_from_headers: llm=%s brain=%s embed=%s (len llm=%d brain=%d)",
+        "set" if llm_key else "MISSING",
+        "set" if brain_key else "MISSING",
+        "set" if embed_key else "MISSING",
+        len(llm_key),
+        len(brain_key),
+    )
+
+    if not overrides:
+        cfg = base_cfg or load_config()
+    else:
+        cfg = load_config(**overrides)
+
+    # 与前端一致：未单独配置 Brain 时复用对话 Key
+    if not cfg.brain_api_key and cfg.llm_api_key:
+        cfg.brain_api_key = cfg.llm_api_key
+
+    return cfg
