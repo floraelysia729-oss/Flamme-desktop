@@ -18,6 +18,14 @@ Obsidian 插件版请使用 [Flamme](https://github.com/floraelysia729-oss/Flamm
 
 > Windows 可能提示「未签名应用」——目前尚未做代码签名，选择仍要运行即可。
 
+**更新安装失败（文件被占用）**：先完全退出 FLAMME（任务管理器确认没有 `FLAMME.exe` 和 `flamme-api.exe`），再运行新安装包。也可在 PowerShell 执行：
+
+```powershell
+taskkill /F /IM FLAMME.exe /T; taskkill /F /IM flamme-api.exe /T
+```
+
+v0.1.5 起安装程序会自动结束上述进程后再覆盖文件。
+
 ---
 
 ## 开发者：从源码构建

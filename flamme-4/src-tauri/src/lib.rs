@@ -4,7 +4,7 @@ mod vault;
 mod vault_watcher;
 
 use sidecar::SidecarState;
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, WindowEvent};
 use vault::VaultState;
 use vault_watcher::VaultWatcher;
 
@@ -54,16 +54,36 @@ pub fn run() {
                         .build(),
                 )?;
             }
+
+            // 正式版关窗即停 sidecar，避免 flamme-api.exe 残留导致无法覆盖安装
+            if !cfg!(debug_assertions) {
+                let handle = app.handle().clone();
+                if let Some(window) = app.get_webview_window("main") {
+                    window.on_window_event(move |event| {
+                        if matches!(event, WindowEvent::CloseRequested { .. }) {
+                            if let Some(sidecar) = handle.try_state::<SidecarState>() {
+                                sidecar.shutdown();
+                            }
+                        }
+                    });
+                }
+            }
+
             Ok(())
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {
-            // 仅在进程真正退出时杀 sidecar；不要在 ExitRequested 时杀，
-            // 否则关窗瞬间会打断仍在进行的 /api/ingest（PDF/MinerU 等长任务）。
+            // 开发版仅在进程退出时杀 sidecar，避免关窗打断 ingest 长任务
             if matches!(event, RunEvent::Exit) {
                 if let Some(sidecar) = app_handle.try_state::<SidecarState>() {
                     sidecar.shutdown();
+                }
+            } else if !cfg!(debug_assertions) {
+                if let RunEvent::ExitRequested { .. } = event {
+                    if let Some(sidecar) = app_handle.try_state::<SidecarState>() {
+                        sidecar.shutdown();
+                    }
                 }
             }
         });

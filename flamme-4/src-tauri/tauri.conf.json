@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "FLAMME",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "identifier": "com.llmwiki.flamme4",
   "build": {
     "frontendDist": "../dist",
@@ -34,6 +34,11 @@
     "targets": ["msi", "nsis"],
     "resources": {
       "binaries/flamme-api/": "flamme-api/"
+    },
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
     },
     "icon": [
       "icons/icon.png",
