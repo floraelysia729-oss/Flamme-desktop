@@ -13,7 +13,8 @@ export function getEditorTheme(colors: ThemeColors) {
     },
     '.cm-scroller': {
       lineHeight: '1.65',
-      overflow: 'auto',
+      overflowY: 'scroll',
+      scrollbarGutter: 'stable',
     },
     '.cm-content': {
       padding: '18px 36px 18px 14px',

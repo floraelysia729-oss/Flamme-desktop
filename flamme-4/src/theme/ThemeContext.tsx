@@ -56,7 +56,7 @@ function applyEditorCssVars(colors: ThemeColors, colorMode: ColorMode) {
   root.style.setProperty('--editor-link', colors.link)
   root.style.setProperty('--editor-code', colors.code)
   root.style.setProperty('--editor-quote', colors.quote)
-  const glassAlpha = colorMode === 'light' ? 0.52 : 0.72
+  const glassAlpha = 0.9
   root.style.setProperty(
     '--editor-glass-bg',
     hexWithAlpha(colors.background, glassAlpha),

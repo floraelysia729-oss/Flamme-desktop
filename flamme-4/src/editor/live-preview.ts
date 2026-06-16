@@ -52,7 +52,13 @@ function build(view: EditorView): DecorationSet {
         posInRanges(node.from, mask.math) ||
         posInRanges(node.to, mask.math) ||
         posInRanges(node.from, mask.html) ||
-        posInRanges(node.to, mask.html)
+        posInRanges(node.to, mask.html) ||
+        posInRanges(node.from, mask.tables) ||
+        posInRanges(node.to, mask.tables) ||
+        posInRanges(node.from, mask.internalLinks) ||
+        posInRanges(node.to, mask.internalLinks) ||
+        posInRanges(node.from, mask.anchorTargets) ||
+        posInRanges(node.to, mask.anchorTargets)
       ) {
         return
       }

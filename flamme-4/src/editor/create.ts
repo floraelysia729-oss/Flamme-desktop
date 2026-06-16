@@ -13,6 +13,9 @@ import { wikilinkHoverPlugin } from './wikilink-tooltip'
 import { blockStylePlugin } from './block-styles'
 import { htmlPreviewPlugin } from './html-preview'
 import { mathPreviewPlugin } from './math-preview'
+import { tablePreviewPlugin } from './table-preview'
+import { anchorLinkPlugin, anchorClickHandler } from './anchor-nav'
+import { editorScrollHandler, editorSelectionScrollHandler } from './editorScrollHandler'
 import { editorThemeCompartment, highlightCompartment } from './extensions'
 
 export function createEditor(
@@ -33,9 +36,14 @@ export function createEditor(
     livePreview,
     mathPreviewPlugin,
     htmlPreviewPlugin,
+    tablePreviewPlugin,
+    anchorLinkPlugin,
     wikilinkPlugin,
     wikilinkHoverPlugin,
     wikilinkClickHandler,
+    anchorClickHandler,
+    editorScrollHandler,
+    editorSelectionScrollHandler,
     blockStylePlugin,
   ]
 

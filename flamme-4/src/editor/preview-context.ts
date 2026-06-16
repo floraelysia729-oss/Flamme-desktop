@@ -7,12 +7,19 @@ import type { WikilinkRange } from './wikilink-ranges'
 import { scanWikilinks } from './wikilink-ranges'
 import type { FrontmatterRange } from './frontmatter-ranges'
 import { scanFrontmatter } from './frontmatter-ranges'
+import type { GfmTableRange } from './table-ranges'
+import { scanGfmTableBlocks } from './table-ranges'
+import type { AnchorTarget, InternalMdLink } from '../shared/markdownAnchors'
+import { scanAnchorTargets, scanInternalMdLinks } from '../shared/markdownAnchors'
 import { shouldRenderWidget } from './viewport-scope'
 
 export interface PreviewWidgetMask {
   math: MathRange[]
   wikilinks: WikilinkRange[]
   html: HtmlBlockRange[]
+  tables: GfmTableRange[]
+  internalLinks: InternalMdLink[]
+  anchorTargets: AnchorTarget[]
   frontmatter: FrontmatterRange | null
 }
 
@@ -44,6 +51,9 @@ export function buildPreviewWidgetMask(
     math: activeWidgetRanges(view, cursor, scanMathRanges(doc)),
     wikilinks: activeWidgetRanges(view, cursor, scanWikilinks(doc)),
     html: activeWidgetRanges(view, cursor, scanHtmlLineBlocks(doc)),
+    tables: activeWidgetRanges(view, cursor, scanGfmTableBlocks(doc)),
+    internalLinks: activeWidgetRanges(view, cursor, scanInternalMdLinks(doc)),
+    anchorTargets: activeWidgetRanges(view, cursor, scanAnchorTargets(doc)),
     frontmatter,
   }
 }

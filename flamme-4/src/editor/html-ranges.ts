@@ -1,5 +1,9 @@
 /** 整行 HTML 块（如 <table>...</table>），单行 replace 不跨换行 */
 
+import { sanitizeHtmlSnippet } from '../shared/sanitizeHtml'
+
+export { sanitizeHtmlSnippet }
+
 export interface HtmlBlockRange {
   from: number
   to: number
@@ -40,10 +44,4 @@ export function scanHtmlLineBlocks(doc: string): HtmlBlockRange[] {
   }
 
   return out
-}
-
-export function sanitizeHtmlSnippet(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-    .replace(/\son\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
 }

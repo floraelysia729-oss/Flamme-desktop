@@ -95,6 +95,11 @@ const marked = new Marked({
         return `<a class="chat-md-external" href="${escapeAttr(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`
       }
 
+      if (url.startsWith('#')) {
+        const id = url.slice(1).trim()
+        return `<a class="chat-md-anchor" role="link" href="#" data-md-anchor="${escapeAttr(id)}">${escapeHtml(label)}</a>`
+      }
+
       const safeHref = escapeAttr(url.replace(/^\//, ''))
       return `<a class="chat-doc-link" role="link" href="#" data-doc-href="${safeHref}">${escapeHtml(label)}</a>`
     },

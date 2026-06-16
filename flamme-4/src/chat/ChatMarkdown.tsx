@@ -12,6 +12,18 @@ interface Props {
   skipMath?: boolean
 }
 
+function scrollToAnchorInContainer(root: HTMLElement, anchorId: string): boolean {
+  const id = anchorId.trim()
+  if (!id) return false
+  const escaped = typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(id) : id
+  const el =
+    root.querySelector(`#${escaped}`) ??
+    root.querySelector(`[id="${id.replace(/"/g, '\\"')}"]`)
+  if (!el) return false
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  return true
+}
+
 export default function ChatMarkdown({ content, skipMath = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkHint, setLinkHint] = useState('')
@@ -58,6 +70,17 @@ export default function ChatMarkdown({ content, skipMath = false }: Props) {
 
     const onClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement
+
+      const anchorLink = target.closest<HTMLElement>('.chat-md-anchor')
+      if (anchorLink && root.contains(anchorLink)) {
+        const id = anchorLink.getAttribute('data-md-anchor')
+        if (id && scrollToAnchorInContainer(root, id)) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+        return
+      }
+
       const link = target.closest<HTMLElement>('.chat-doc-link')
       if (!link || !root.contains(link)) return
       e.preventDefault()
