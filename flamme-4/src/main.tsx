@@ -3,6 +3,7 @@ import 'katex/dist/katex.min.css'
 import 'highlight.js/styles/github-dark.min.css'
 import './index.css'
 import App from './App'
+import { applyFontScale } from './shared/fontScale'
 import { mark } from './shared/profiling'
 import { registerLocalFs } from './api/bridge'
 import { isTauriWebView } from './api/tauri-runtime'
@@ -17,6 +18,8 @@ if (__FEATURE_TAURI__ && !isTauriWebView()) {
     '[flamme] 检测到 Tauri 构建，但当前在普通浏览器中打开。请使用 npm run tauri:dev 启动桌面版。',
   )
 }
+
+applyFontScale()
 
 mark('react_entry')
 createRoot(document.getElementById('root')!).render(<App />)

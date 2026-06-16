@@ -11,6 +11,7 @@ interface Props {
 const WEEKS = 53
 const CELL = 12
 const GAP = 2
+const HEAT_ALPHAS = [0.12, 0.28, 0.45, 0.62, 0.78] as const
 const ROW_LABELS = [
   { row: 1, label: '一' },
   { row: 3, label: '三' },
@@ -18,12 +19,24 @@ const ROW_LABELS = [
 ]
 const MONTH_LABELS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 
+function formatLocalDate(d: Date): string {
+  const y = d.getFullYear()
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function heatAlpha(count: number): number {
+  if (count === 0) return 0.12
+  if (count <= 2) return HEAT_ALPHAS[1]
+  if (count <= 5) return HEAT_ALPHAS[2]
+  if (count <= 8) return HEAT_ALPHAS[3]
+  return HEAT_ALPHAS[4]
+}
+
 function getColor(count: number): string {
-  if (count === 0) return 'oklch(from var(--theme-c1, var(--accent)) l c h / 0.07)'
-  if (count <= 2) return 'oklch(from var(--theme-c1, var(--accent)) l c h / 0.25)'
-  if (count <= 5) return 'oklch(from var(--theme-c2, var(--accent-warm)) l c h / 0.45)'
-  if (count <= 8) return 'oklch(from var(--theme-c1, var(--accent)) l c h / 0.58)'
-  return 'oklch(from var(--theme-c2, var(--accent-warm)) l c h / 0.75)'
+  const alpha = heatAlpha(count)
+  return `oklch(from var(--theme-c1, var(--accent)) l c h / ${alpha})`
 }
 
 export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Props) {
@@ -37,7 +50,7 @@ export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Pro
       for (let d = 0; d < 7; d++) {
         const cellDate = new Date(today)
         cellDate.setDate(cellDate.getDate() - (w * 7 + ((today.getDay() - d + 7) % 7)))
-        const ds = cellDate.toISOString().slice(0, 10)
+        const ds = formatLocalDate(cellDate)
         out.push({ date: ds, count: byDate.get(ds) ?? 0, col: WEEKS - 1 - w, row: d })
       }
     }
@@ -95,7 +108,7 @@ export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Pro
         </div>
         <div className="flex items-center gap-1 text-[9px] text-[var(--ink-muted)] opacity-70">
           <span>少</span>
-          {[0.12, 0.28, 0.45, 0.62, 0.78].map((a, i) => (
+          {HEAT_ALPHAS.map((a, i) => (
             <span
               key={i}
               className="inline-block rounded-sm"

@@ -8,12 +8,17 @@ import { parseWikilinkTarget, resolveDocLinkFromElement } from './resolveVaultLi
 
 interface Props {
   content: string
+  /** 流式期间跳过 KaTeX 渲染，避免公式反复重算卡顿 */
+  skipMath?: boolean
 }
 
-export default function ChatMarkdown({ content }: Props) {
+export default function ChatMarkdown({ content, skipMath = false }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [linkHint, setLinkHint] = useState('')
-  const html = useMemo(() => renderChatMarkdown(content), [content])
+  const html = useMemo(
+    () => renderChatMarkdown(content, { skipMath }),
+    [content, skipMath],
+  )
 
   const handleDocClick = useCallback(async (el: HTMLElement) => {
     const nodes = getFileStore().nodes
@@ -72,7 +77,8 @@ export default function ChatMarkdown({ content }: Props) {
     <div className="chat-md-wrap">
       <div
         ref={containerRef}
-        className="chat-md text-sm leading-relaxed break-words"
+        className="chat-md leading-relaxed break-words"
+        style={{ fontSize: 'var(--font-chat-size, 14px)' }}
         dangerouslySetInnerHTML={{ __html: html }}
       />
       {linkHint && (

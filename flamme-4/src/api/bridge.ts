@@ -86,7 +86,7 @@ export async function pythonFetch<T>(
 
 export async function testPythonConnection(): Promise<boolean> {
   try {
-    await pythonFetch<unknown>('/status')
+    await pythonFetch<unknown>('/status', { timeoutMs: 10_000 })
     useConnectionStore.getState().setConnected(true)
     return true
   } catch {
@@ -367,6 +367,17 @@ export interface SidecarStatus {
   port: number
   detail: string
   log_file?: string
+  spawn_error?: string | null
+}
+
+export function formatSidecarBootError(st: SidecarStatus | null): string {
+  if (st?.spawn_error) {
+    return `AI 引擎启动失败：${st.spawn_error}\n\n请在 flamme-4 目录执行：pnpm run setup:backend`
+  }
+  const logHint = st?.log_file
+    ? `日志：${st.log_file}`
+    : '日志：%APPDATA%\\com.llmwiki.flamme4\\logs\\flamme-api.log'
+  return `AI 引擎未能启动（90 秒内未响应）。${logHint}\n\n若首次开发，请先执行：pnpm run setup:backend`
 }
 
 export async function getSidecarStatus(): Promise<SidecarStatus | null> {
@@ -426,7 +437,11 @@ export async function waitForPythonSidecar(maxMs = 30_000): Promise<boolean> {
   try {
     while (Date.now() < deadline) {
       const st = await getSidecarStatus()
-      if (st?.ready) return testPythonConnection()
+      if (st?.spawn_error) return false
+      if (st?.ready) {
+        const ok = await testPythonConnection()
+        if (ok) return true
+      }
       await new Promise((r) => setTimeout(r, 400))
     }
     return testPythonConnection()

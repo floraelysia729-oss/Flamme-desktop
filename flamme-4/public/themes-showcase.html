@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flamme — 三主题液态玻璃展示</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --ink: #1e2824;
+      --ink-muted: #5a6460;
+      --page-bg: #e8ecea;
+      --font: 'Inter', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    }
+
+    html.dark {
+      --ink: #ecf0ee;
+      --ink-muted: #9aa8a2;
+      --page-bg: #121614;
+    }
+
+    body {
+      font-family: var(--font);
+      color: var(--ink);
+      background: var(--page-bg);
+      min-height: 100vh;
+      line-height: 1.5;
+    }
+
+    /* —— Liquid Glass (from index.css) —— */
+    .glass-panel { position: relative; border-radius: 16px; overflow: hidden; }
+    .glass-panel-light {
+      background: rgba(255,255,255,0.35);
+      border: 1px solid rgba(255,255,255,0.5);
+      backdrop-filter: blur(28px) saturate(1.4) brightness(1.05);
+      -webkit-backdrop-filter: blur(28px) saturate(1.4) brightness(1.05);
+    }
+    .glass-panel-dark {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.08);
+      backdrop-filter: blur(32px) saturate(1.2);
+      -webkit-backdrop-filter: blur(32px) saturate(1.2);
+    }
+    .liquid-card { border-radius: 12px; position: relative; overflow: hidden; }
+    .liquid-card-light {
+      background: linear-gradient(135deg, rgba(255,255,255,0.5), rgba(255,255,255,0.25));
+      border: 1px solid rgba(255,255,255,0.45);
+      backdrop-filter: blur(16px) brightness(1.08);
+      -webkit-backdrop-filter: blur(16px) brightness(1.08);
+    }
+    .liquid-card-dark {
+      background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.02));
+      border: 1px solid rgba(255,255,255,0.06);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .inner-chip { border-radius: 8px; padding: 6px 10px; font-size: 11px; }
+    .inner-chip-light {
+      background: rgba(255,255,255,0.55);
+      border: 1px solid rgba(255,255,255,0.6);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+    .inner-chip-dark {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.05);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+    .specular-top { position: relative; overflow: hidden; }
+    .specular-top::before {
+      content: '';
+      position: absolute; top: 0; left: 8%; right: 8%; height: 38%;
+      background: linear-gradient(180deg, rgba(255,255,255,0.35) 0%, rgba(255,255,255,0.08) 40%, transparent 100%);
+      pointer-events: none; border-radius: inherit; z-index: 1;
+    }
+    html.dark .specular-top::before {
+      background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.015) 40%, transparent 100%);
+    }
+    .depth-panel-light {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,0,0,0.04),
+        0 2px 4px rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06), 0 20px 40px rgba(0,0,0,0.04);
+    }
+    .depth-panel-dark {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.2),
+        0 2px 4px rgba(0,0,0,0.15), 0 8px 24px rgba(0,0,0,0.25), 0 20px 40px rgba(0,0,0,0.2);
+    }
+    .depth-card-light {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 0 rgba(0,0,0,0.05), 0 4px 12px rgba(0,0,0,0.05);
+    }
+    .depth-card-dark {
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), inset 0 -1px 0 rgba(0,0,0,0.25), 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    /* —— Page layout —— */
+    .page-header {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between; gap: 16px;
+      padding: 14px 24px;
+      background: rgba(255,255,255,0.72);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+    }
+    html.dark .page-header {
+      background: rgba(18,22,20,0.85);
+      border-bottom-color: rgba(255,255,255,0.06);
+    }
+    .page-header h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: -0.02em; }
+    .page-header p { font-size: 0.75rem; color: var(--ink-muted); margin-top: 2px; }
+    .header-actions { display: flex; gap: 8px; align-items: center; }
+    .btn {
+      padding: 8px 14px; border-radius: 10px; font-size: 12px; font-weight: 600;
+      border: 1px solid rgba(0,0,0,0.1); background: rgba(255,255,255,0.6);
+      color: var(--ink); cursor: pointer; transition: background 0.15s;
+    }
+    html.dark .btn {
+      background: rgba(255,255,255,0.06);
+      border-color: rgba(255,255,255,0.1);
+      color: var(--ink);
+    }
+    .btn:hover { background: rgba(255,255,255,0.9); }
+    html.dark .btn:hover { background: rgba(255,255,255,0.12); }
+    .btn.active {
+      background: rgba(132,185,170,0.25);
+      border-color: rgba(132,185,170,0.5);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      padding: 24px;
+      max-width: 1440px;
+      margin: 0 auto;
+    }
+    @media (max-width: 1100px) { .grid { grid-template-columns: 1fr; max-width: 520px; } }
+
+    .theme-card {
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      min-height: 520px;
+      display: flex;
+      flex-direction: column;
+    }
+    .theme-bg {
+      position: absolute; inset: 0;
+      background-size: cover;
+      background-position: center;
+    }
+    .theme-bg::after {
+      content: '';
+      position: absolute; inset: 0;
+      background: rgba(244,248,246,0.18);
+      transition: background 0.25s;
+    }
+    html.dark .theme-bg::after {
+      background: rgba(15,18,16,0.45);
+    }
+
+    .theme-body {
+      position: relative; z-index: 1;
+      padding: 16px;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .theme-title {
+      display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    }
+    .theme-title h2 { font-size: 1.25rem; font-weight: 700; color: #fff; text-shadow: 0 1px 8px rgba(0,0,0,0.35); }
+    .theme-title span { font-size: 11px; color: rgba(255,255,255,0.85); text-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+
+    .swatches { display: flex; gap: 6px; }
+    .swatch {
+      width: 28px; height: 28px; border-radius: 8px;
+      border: 2px solid rgba(255,255,255,0.5);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    }
+
+    /* Mini app shell */
+    .mini-shell {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+    .mini-shell .glass-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 10px;
+      gap: 8px;
+    }
+    .mini-toolbar {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: var(--ink);
+    }
+    .mini-toolbar .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c1); opacity: 0.8; }
+    .mini-main { display: flex; gap: 8px; flex: 1; min-height: 140px; }
+    .mini-sidebar {
+      width: 72px;
+      padding: 8px 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 10px;
+      color: var(--ink-muted);
+    }
+    .mini-sidebar .file {
+      padding: 4px 6px;
+      border-radius: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mini-sidebar .file.active {
+      background: rgba(255,255,255,0.15);
+      color: var(--ink);
+      font-weight: 600;
+    }
+    .mini-editor {
+      flex: 1;
+      padding: 10px 12px;
+      font-size: 11px;
+      line-height: 1.6;
+      color: var(--ink);
+    }
+    .mini-editor .h1 { font-size: 14px; font-weight: 700; margin-bottom: 6px; color: var(--h1); }
+    .mini-editor .h2 { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--h2); }
+    .mini-editor .muted { color: var(--ink-muted); font-size: 10px; }
+    .mini-editor code {
+      font-family: 'Cascadia Code', monospace;
+      font-size: 10px;
+      padding: 1px 4px;
+      border-radius: 4px;
+      background: rgba(0,0,0,0.08);
+    }
+    html.dark .mini-editor code { background: rgba(255,255,255,0.08); }
+
+    .mini-stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+    .stat-card {
+      padding: 10px;
+      font-size: 10px;
+      color: var(--ink);
+    }
+    .stat-card strong { display: block; font-size: 18px; font-weight: 700; margin-bottom: 2px; color: var(--c1); }
+    .stat-card span { color: var(--ink-muted); }
+
+    .refraction-xilan.glass-panel-light { box-shadow: inset 0 0 20px rgba(239,192,212,0.12), inset 0 0 60px rgba(247,223,161,0.06), var(--panel-shadow); }
+    .refraction-wushan.glass-panel-light { box-shadow: inset 0 0 20px rgba(131,94,156,0.12), inset 0 0 60px rgba(183,136,184,0.06), var(--panel-shadow); }
+    .refraction-zhihe.glass-panel-light { box-shadow: inset 0 0 20px rgba(132,185,170,0.12), inset 0 0 60px rgba(239,190,146,0.06), var(--panel-shadow); }
+    .refraction-xilan.glass-panel-dark { box-shadow: inset 0 0 20px rgba(239,192,212,0.06), inset 0 0 60px rgba(247,223,161,0.03), var(--panel-shadow); }
+    .refraction-wushan.glass-panel-dark { box-shadow: inset 0 0 20px rgba(131,94,156,0.06), inset 0 0 60px rgba(183,136,184,0.03), var(--panel-shadow); }
+    .refraction-zhihe.glass-panel-dark { box-shadow: inset 0 0 20px rgba(132,185,170,0.06), inset 0 0 60px rgba(239,190,146,0.03), var(--panel-shadow); }
+
+    .glass-mode-light { --panel-shadow: inset 0 1px 0 rgba(255,255,255,0.8), inset 0 -1px 0 rgba(0,0,0,0.04), 0 8px 24px rgba(0,0,0,0.06); }
+    .glass-mode-dark { --panel-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.2), 0 8px 24px rgba(0,0,0,0.25); }
+
+    .footer-note {
+      text-align: center;
+      padding: 0 24px 32px;
+      font-size: 12px;
+      color: var(--ink-muted);
+    }
+    .footer-note a { color: #2a6858; }
+    html.dark .footer-note a { color: #84b9aa; }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div>
+      <h1>Flamme 液态玻璃 · 三主题展示</h1>
+      <p>夕岚 / 雾山 / 枝荷 — 答辩与录屏用静态预览</p>
+    </div>
+    <div class="header-actions">
+      <button type="button" class="btn active" id="btn-light" onclick="setMode('light')">浅色</button>
+      <button type="button" class="btn" id="btn-dark" onclick="setMode('dark')">深色</button>
+    </div>
+  </header>
+
+  <main class="grid" id="grid"></main>
+
+  <p class="footer-note">
+    双击本文件或访问 <code>/themes-showcase.html</code>（需与 <code>themes/</code> 同目录）·
+    设计规格见 <code>docs/superpowers/specs/2026-06-03-phase1c-1-visual-design.md</code>
+  </p>
+
+  <script>
+    const THEMES = [
+      {
+        id: 'xilan',
+        name: '夕岚',
+        tag: 'Sunset Mist · 柔粉暖阳',
+        wallpaper: './themes/xilan-wallpaper.jpg',
+        colors: ['#efc0d4', '#f7dfa1', '#cbcae2', '#cae2f5'],
+        editor: {
+          h1: '#8b3a58', h2: '#6b4a28',
+          light: { h1: '#8b3a58', h2: '#6b4a28' },
+          dark: { h1: '#ffd4e8', h2: '#fff0c0' },
+        },
+      },
+      {
+        id: 'wushan',
+        name: '雾山',
+        tag: 'Misty Mountain · 靛蓝紫雾',
+        wallpaper: './themes/wushan-wallpaper.jpg',
+        colors: ['#835e9c', '#b788b8', '#bfc1e0', '#9cc2e7'],
+        editor: {
+          light: { h1: '#5a3a78', h2: '#2a4a88' },
+          dark: { h1: '#e8c8e8', h2: '#cce8ff' },
+        },
+      },
+      {
+        id: 'zhihe',
+        name: '枝荷',
+        tag: 'Branch Lotus · 青绿暖橘',
+        wallpaper: './themes/zhihe-wallpaper.jpg',
+        colors: ['#84b9aa', '#efbe92', '#dae0e8', '#e69d60'],
+        editor: {
+          light: { h1: '#2a6858', h2: '#8a5028' },
+          dark: { h1: '#c8f0dc', h2: '#ffe8c0' },
+        },
+      },
+    ];
+
+    let mode = 'light';
+
+    function glassClass(base) {
+      return `${base}-${mode}`;
+    }
+
+    function setMode(next) {
+      mode = next;
+      document.documentElement.classList.toggle('dark', mode === 'dark');
+      document.getElementById('btn-light').classList.toggle('active', mode === 'light');
+      document.getElementById('btn-dark').classList.toggle('active', mode === 'dark');
+      render();
+    }
+
+    function renderTheme(t) {
+      const ed = t.editor[mode] || t.editor;
+      const gc = glassClass;
+      const gm = mode === 'light' ? 'glass-mode-light' : 'glass-mode-dark';
+
+      return `
+        <article class="theme-card" data-theme="${t.id}">
+          <div class="theme-bg" style="background-image:url('${t.wallpaper}')"></div>
+          <div class="theme-body">
+            <div class="theme-title">
+              <div>
+                <h2>${t.name}</h2>
+                <span>${t.tag}</span>
+              </div>
+              <div class="swatches">
+                ${t.colors.map((c) => `<div class="swatch" style="background:${c}" title="${c}"></div>`).join('')}
+              </div>
+            </div>
+
+            <div class="mini-shell ${gm}">
+              <div class="glass-panel specular-top refraction-${t.id} ${gc('glass-panel')} ${gc('depth-panel')}">
+                <div class="liquid-card ${gc('liquid-card')} ${gc('depth-card')} mini-toolbar">
+                  <span class="dot" style="--c1:${t.colors[0]}"></span>
+                  <strong>Flamme</strong>
+                  <span class="muted" style="margin-left:auto;font-size:10px;color:var(--ink-muted)">笔记.md</span>
+                </div>
+                <div class="mini-main">
+                  <div class="liquid-card ${gc('liquid-card')} ${gc('depth-card')} mini-sidebar">
+                    <div class="file active">笔记.md</div>
+                    <div class="file">线性代数</div>
+                    <div class="file">entities/</div>
+                  </div>
+                  <div class="liquid-card ${gc('liquid-card')} ${gc('depth-card')} mini-editor" style="--h1:${ed.h1};--h2:${ed.h2}">
+                    <div class="h1"># 梯度下降</div>
+                    <p class="muted">Learn 模式 · 数形结合</p>
+                    <div class="h2">## 核心直觉</div>
+                    <p>沿负梯度方向走，就像下山找最低点。<code>w := w - α∇L</code></p>
+                  </div>
+                </div>
+                <div class="mini-stats">
+                  <div class="liquid-card ${gc('liquid-card')} stat-card" style="--c1:${t.colors[0]}">
+                    <strong>128</strong>
+                    <span>知识实体</span>
+                  </div>
+                  <div class="liquid-card ${gc('liquid-card')} stat-card" style="--c1:${t.colors[3] || t.colors[1]}">
+                    <strong>7</strong>
+                    <span>连续学习天</span>
+                  </div>
+                </div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  <span class="inner-chip ${gc('inner-chip')}">Search</span>
+                  <span class="inner-chip ${gc('inner-chip')}">Learn</span>
+                  <span class="inner-chip ${gc('inner-chip')}">图谱</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      `;
+    }
+
+    function render() {
+      document.getElementById('grid').innerHTML = THEMES.map(renderTheme).join('');
+    }
+
+    render();
+  </script>
+</body>
+</html>

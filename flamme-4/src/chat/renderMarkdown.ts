@@ -32,7 +32,11 @@ function preprocessWikilinks(text: string): string {
 
 function renderKaTeX(math: string, displayMode: boolean): string {
   try {
-    return katex.renderToString(math, { displayMode, throwOnError: false })
+    return katex.renderToString(math, {
+      displayMode,
+      throwOnError: false,
+      strict: false,
+    })
   } catch {
     return `<code class="math-error">${escapeHtml(math)}</code>`
   }
@@ -97,14 +101,22 @@ const marked = new Marked({
   },
 })
 
+interface RenderChatMarkdownOptions {
+  /** 流式期间跳过 KaTeX（最贵的一步），公式保留为原文，输出结束后再完整渲染 */
+  skipMath?: boolean
+}
+
 /** 助手消息 Markdown → HTML（含 KaTeX、wikilink、vault 相对链接） */
-export function renderChatMarkdown(text: string): string {
+export function renderChatMarkdown(
+  text: string,
+  options: RenderChatMarkdownOptions = {},
+): string {
   if (!text.trim()) return ''
 
   const { cleanText } = extractSuggestionQuestions(text)
   const withWikilinks = preprocessWikilinks(cleanText)
   const { text: protectedText, blocks } = protectCodeBlocks(withWikilinks)
-  const withMath = renderMath(protectedText)
+  const withMath = options.skipMath ? protectedText : renderMath(protectedText)
   const restored = restoreCodeBlocks(withMath, blocks)
   const raw = marked.parse(restored)
   return typeof raw === 'string' ? raw : ''

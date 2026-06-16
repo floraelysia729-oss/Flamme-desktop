@@ -1,22 +1,24 @@
 {
   "name": "flamme-4",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.4",
   "type": "module",
+  "packageManager": "pnpm@10.19.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "test": "vitest",
     "tauri": "tauri",
-    "tauri:dev": "npm run icons && tauri dev",
-    "tauri:build": "npm run icons && tauri build",
-    "tauri:build:ci": "npm run build && tauri build",
+    "tauri:dev": "pnpm run icons && tauri dev",
+    "tauri:build": "pnpm run icons && tauri build",
+    "tauri:build:ci": "pnpm run build && tauri build",
     "build:sidecar": "powershell -NoProfile -ExecutionPolicy Bypass -File ../flamme-backend/scripts/build_sidecar.ps1",
-    "release:win": "npm run build:sidecar && npm run tauri:build",
-    "release:win:ci": "npm run build:sidecar && npm run tauri:build:ci",
+    "release:win": "pnpm run build:sidecar && pnpm run tauri:build",
+    "release:win:ci": "pnpm run build:sidecar && pnpm run tauri:build:ci",
     "create-shortcut": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/create-desktop-shortcut.ps1",
-    "icons": "python branding/generate_app_icon.py && tauri icon branding/app-icon-square.png"
+    "icons": "python branding/generate_app_icon.py && tauri icon branding/app-icon-square.png",
+    "setup:backend": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-backend.ps1"
   },
   "dependencies": {
     "@codemirror/commands": "^6.10",

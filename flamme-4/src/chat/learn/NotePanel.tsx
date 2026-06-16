@@ -113,7 +113,10 @@ export default function NotePanel({
           onContentChange={(c) => handleContentEdit(updateSection(note, 'knowledge_tree', c))}
           onToggleLock={() => handleLockToggle(toggleSectionLock(note, 'knowledge_tree'))}
         >
-          <KnowledgeTreeView content={sec('knowledge_tree').content} />
+          <KnowledgeTreeView
+            content={sec('knowledge_tree').content}
+            rootTopic={note.rootTopic}
+          />
         </SectionBlock>
 
         <SectionBlock

@@ -22,9 +22,13 @@ pub struct SidecarState {
 struct SidecarInner {
     child: Option<Child>,
     spawned_by_us: bool,
+    /// Release 安装包使用 flamme-api.exe；退出时需清理（含复用/孤儿进程）。
+    uses_bundled_api: bool,
     port: u16,
     backend_dir: PathBuf,
     data_dir: PathBuf,
+    /// 启动失败原因（供前端快速提示，避免空等 90s）
+    spawn_error: Option<String>,
 }
 
 enum SidecarLaunch {
@@ -47,7 +51,7 @@ impl SidecarState {
             log::info!("FLAMME_SKIP_SIDECAR set — not spawning Python");
             let backend_dir = resolve_dev_backend_dir()?;
             let data_dir = app_data_dir();
-            return Ok(Self::idle(backend_dir, data_dir));
+            return Ok(Self::idle(backend_dir, data_dir, None));
         }
 
         let port = std::env::var("FLAMME_API_PORT")
@@ -65,18 +69,43 @@ impl SidecarState {
 
         ensure_app_data(&data_dir, bundled_env_example())?;
 
-        if is_api_up(port) {
+        let uses_bundled = matches!(&launch, SidecarLaunch::Bundled { .. });
+
+        if uses_bundled && is_api_up(port) {
             log::info!(
-                "Python API already listening on port {} — reusing existing process",
+                "Port {} in use — cleaning up stale bundled flamme-api before start",
                 port
             );
+            kill_bundled_sidecar_processes();
+            if !wait_until_port_free(port, 5) {
+                log::warn!(
+                    "Port {} still busy after sidecar cleanup; will try reuse or spawn",
+                    port
+                );
+            }
+        }
+
+        if is_api_up(port) {
+            if uses_bundled {
+                log::info!(
+                    "Bundled API still listening on port {} — reusing (will stop on app exit)",
+                    port
+                );
+            } else {
+                log::info!(
+                    "Python API already listening on port {} — reusing existing process",
+                    port
+                );
+            }
             return Ok(Self {
                 inner: Mutex::new(SidecarInner {
                     child: None,
                     spawned_by_us: false,
+                    uses_bundled_api: uses_bundled,
                     port,
                     backend_dir,
                     data_dir,
+                    spawn_error: None,
                 }),
             });
         }
@@ -145,9 +174,11 @@ impl SidecarState {
             inner: Mutex::new(SidecarInner {
                 child: Some(child),
                 spawned_by_us: true,
+                uses_bundled_api: uses_bundled,
                 port,
                 backend_dir,
                 data_dir,
+                spawn_error: None,
             }),
         };
 
@@ -167,16 +198,25 @@ impl SidecarState {
         Ok(state)
     }
 
-    pub fn idle(backend_dir: PathBuf, data_dir: PathBuf) -> Self {
+    pub fn idle(backend_dir: PathBuf, data_dir: PathBuf, spawn_error: Option<String>) -> Self {
         Self {
             inner: Mutex::new(SidecarInner {
                 child: None,
                 spawned_by_us: false,
+                uses_bundled_api: false,
                 port: DEFAULT_PORT,
                 backend_dir,
                 data_dir,
+                spawn_error,
             }),
         }
+    }
+
+    pub fn spawn_error(&self) -> Option<String> {
+        self.inner
+            .lock()
+            .ok()
+            .and_then(|g| g.spawn_error.clone())
     }
 
     pub fn port(&self) -> u16 {
@@ -193,14 +233,18 @@ impl SidecarState {
             Ok(g) => g,
             Err(e) => e.into_inner(),
         };
-        if !guard.spawned_by_us {
-            log::info!("Sidecar shutdown skipped (not spawned by Flamme)");
-            return;
-        }
+
         if let Some(mut child) = guard.child.take() {
             let pid = child.id();
             log::info!("Stopping Python sidecar (pid={pid})");
             kill_child_process(&mut child);
+        }
+
+        if guard.uses_bundled_api {
+            log::info!("Ensuring bundled flamme-api processes are stopped");
+            kill_bundled_sidecar_processes();
+        } else if !guard.spawned_by_us {
+            log::info!("Sidecar shutdown skipped (external dev API, not bundled)");
         }
     }
 
@@ -220,6 +264,8 @@ impl SidecarState {
         let up = is_api_up(guard.port);
         let spawn = if guard.spawned_by_us {
             "spawned"
+        } else if up && guard.uses_bundled_api {
+            "bundled-reused"
         } else if up {
             "external"
         } else {
@@ -240,6 +286,45 @@ impl Drop for SidecarState {
     fn drop(&mut self) {
         self.shutdown();
     }
+}
+
+/// 结束 PyInstaller 打包的 flamme-api.exe（含子进程树）。
+fn kill_bundled_sidecar_processes() {
+    #[cfg(windows)]
+    {
+        let status = Command::new("taskkill")
+            .args(["/F", "/IM", "flamme-api.exe", "/T"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+        match status {
+            Ok(s) if s.success() => log::info!("taskkill flamme-api.exe ok"),
+            Ok(s) => log::info!("taskkill flamme-api.exe: no process or already stopped ({s})"),
+            Err(e) => log::warn!("taskkill flamme-api.exe failed: {e}"),
+        }
+    }
+
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("pkill")
+            .args(["-f", "flamme-api"])
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+}
+
+fn wait_until_port_free(port: u16, timeout_secs: u64) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(timeout_secs);
+    while Instant::now() < deadline {
+        if !is_api_up(port) {
+            return true;
+        }
+        thread::sleep(Duration::from_millis(READY_POLL_MS));
+    }
+    false
 }
 
 fn kill_child_process(child: &mut Child) {
@@ -530,6 +615,7 @@ pub fn sidecar_status(state: tauri::State<'_, SidecarState>) -> serde_json::Valu
         "port": state.port(),
         "detail": state.status_line(),
         "log_file": state.log_file().display().to_string(),
+        "spawn_error": state.spawn_error(),
     })
 }
 

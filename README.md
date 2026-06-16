@@ -51,15 +51,18 @@ cd ..
 
 ```bash
 cd flamme-4
-npm install
-npm run tauri:dev                # 开发模式，自动起 Python sidecar
+pnpm install
+pnpm run setup:backend      # 首次：创建 Python 虚拟环境并安装后端
+pnpm run tauri:dev          # 开发模式，自动起 Python sidecar
 ```
+
+> 若曾用 `npm install` 装过依赖，请先删除 `node_modules` 再执行 `pnpm install`，避免混用两种包管理器。
 
 ### 4. 构建 Windows 安装包
 
 ```bash
 cd flamme-4
-npm run release:win              # PyInstaller 后端 + Tauri MSI/NSIS
+pnpm run release:win         # PyInstaller 后端 + Tauri MSI/NSIS
 ```
 
 产物目录：
@@ -67,12 +70,12 @@ npm run release:win              # PyInstaller 后端 + Tauri MSI/NSIS
 - `flamme-4/src-tauri/target/release/bundle/nsis/*-setup.exe`
 - `flamme-4/src-tauri/target/release/bundle/msi/*.msi`
 
-发布 tag（触发 GitHub Actions）：`git tag desktop-v0.1.0 && git push origin desktop-v0.1.0`
+发布 tag（触发 GitHub Actions）：`git tag desktop-v0.1.4 && git push origin desktop-v0.1.4`
 
 ### 5. 本地快捷方式（开发用）
 
 ```bash
-npm run create-shortcut          # 指向 target/release/FLAMME.exe
+pnpm run create-shortcut       # 指向 target/release/FLAMME.exe
 ```
 
 ---

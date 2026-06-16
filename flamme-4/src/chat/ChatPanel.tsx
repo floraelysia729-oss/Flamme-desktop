@@ -225,6 +225,27 @@ export default function ChatPanel({ onClose }: Props) {
       const startTime = Date.now()
       let fullContent = ''
       let tokens = 0
+      let contentFlushTimer: ReturnType<typeof setTimeout> | null = null
+
+      const flushContentPatch = () => {
+        if (contentFlushTimer !== null) {
+          clearTimeout(contentFlushTimer)
+          contentFlushTimer = null
+        }
+        patchAssistant(idx + 1, {
+          content: fullContent,
+          tokenCount: tokens,
+          duration: Math.round((Date.now() - startTime) / 100) / 10,
+        })
+      }
+
+      const scheduleContentPatch = () => {
+        if (contentFlushTimer !== null) return
+        contentFlushTimer = setTimeout(() => {
+          contentFlushTimer = null
+          flushContentPatch()
+        }, 70)
+      }
 
       try {
         for await (const event of streamChat(
@@ -241,11 +262,7 @@ export default function ChatPanel({ onClose }: Props) {
           if (event.type === 'token' && event.content) {
             fullContent += event.content
             tokens++
-            patchAssistant(idx + 1, {
-              content: fullContent,
-              tokenCount: tokens,
-              duration: Math.round((Date.now() - startTime) / 100) / 10,
-            })
+            scheduleContentPatch()
           } else if (event.type === 'tool_status') {
             applyToolStatus(idx + 1, event as ToolStatus & { type?: string })
             if (
@@ -285,9 +302,9 @@ export default function ChatPanel({ onClose }: Props) {
           } else if (event.type === 'context_pressure' && event.level) {
             setContextPressure(event.level)
           } else if (event.type === 'error' && event.content) {
-            const prev = useChatStore.getState().messages[idx + 1]
+            flushContentPatch()
             patchAssistant(idx + 1, {
-              content: `${prev.content}\n\n**错误:** ${event.content}`.trim(),
+              content: `${fullContent}\n\n**错误:** ${event.content}`.trim(),
             })
             break
           } else if (event.type === 'done') {
@@ -295,6 +312,7 @@ export default function ChatPanel({ onClose }: Props) {
           }
         }
 
+        flushContentPatch()
         const { questions, cleanText } = extractSuggestionQuestions(fullContent)
         if (questions.length > 0) {
           patchAssistant(idx + 1, {
@@ -305,10 +323,12 @@ export default function ChatPanel({ onClose }: Props) {
         setHistoryRefresh((k) => k + 1)
       } catch (e) {
         if (abortRef.current !== controller) return
+        flushContentPatch()
         const err = e as Error
-        const prev = useChatStore.getState().messages[idx + 1]
         if (err.name === 'AbortError') {
-          patchAssistant(idx + 1, { content: `${prev.content}\n\n[已取消]`.trim() })
+          patchAssistant(idx + 1, {
+            content: `${fullContent}\n\n[已取消]`.trim(),
+          })
         } else {
           patchAssistant(idx + 1, { content: `**错误:** ${err.message}` })
         }

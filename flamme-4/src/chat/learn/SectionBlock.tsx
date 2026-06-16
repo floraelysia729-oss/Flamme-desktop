@@ -101,7 +101,7 @@ export default function SectionBlock({
                 </div>
               </div>
             ) : (
-              <div className="text-[11px] prose-sm learn-section-md">
+              <div className="learn-section-md">
                 <ChatMarkdown content={content || '（空）'} />
               </div>
             )

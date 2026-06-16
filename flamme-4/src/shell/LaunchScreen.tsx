@@ -32,7 +32,7 @@ export default function LaunchScreen({ phase, detail, error, onRetry }: Props) {
             <div className="w-8 h-8 rounded-full border-2 border-[#C65D3A]/30 border-t-[#C65D3A] animate-spin" />
           )}
           <p
-            className={`text-sm text-center max-w-xs ${
+            className={`text-sm text-center max-w-xs whitespace-pre-wrap ${
               error ? 'text-red-600' : 'text-[#8B7355]'
             }`}
           >

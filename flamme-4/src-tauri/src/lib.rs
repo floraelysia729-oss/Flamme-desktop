@@ -22,7 +22,7 @@ pub fn run() {
                 .map(std::path::PathBuf::from)
                 .map(|p| p.join("com.llmwiki.flamme4"))
                 .unwrap_or_else(|| std::path::PathBuf::from("."));
-            SidecarState::idle(backend_dir, data_dir)
+            SidecarState::idle(backend_dir, data_dir, Some(e))
         }
     };
 

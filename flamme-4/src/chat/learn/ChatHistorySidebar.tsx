@@ -101,15 +101,22 @@ export default function ChatHistorySidebar({
         {sessions.map((s) => {
           const active = s.session_id === currentSessionId
           return (
-            <button
+            <div
               key={s.session_id}
-              type="button"
-              className={`w-full text-left px-2 py-2 group flex items-start gap-1 border-l-2 transition-colors ${
+              role="button"
+              tabIndex={0}
+              className={`w-full text-left px-2 py-2 group flex items-start gap-1 border-l-2 transition-colors cursor-pointer ${
                 active
                   ? 'border-[var(--accent)] bg-[var(--accent)]/10'
                   : 'border-transparent hover:bg-white/5'
               }`}
               onClick={() => onSelectSession(s.session_id)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  onSelectSession(s.session_id)
+                }
+              }}
             >
               <div className="flex-1 min-w-0">
                 <p className="text-xs truncate font-medium">{s.title || '新对话'}</p>
@@ -125,7 +132,7 @@ export default function ChatHistorySidebar({
               >
                 <Trash2 size={12} />
               </button>
-            </button>
+            </div>
           )
         })}
       </div>
