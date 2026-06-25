@@ -1,6 +1,5 @@
 import { createRoot } from 'react-dom/client'
 import 'katex/dist/katex.min.css'
-import 'highlight.js/styles/github-dark.min.css'
 import './index.css'
 import App from './App'
 import { applyFontScale } from './shared/fontScale'

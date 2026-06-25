@@ -22,9 +22,9 @@ export function getEditorTheme(colors: ThemeColors) {
       fontWeight: '500',
     },
     '.cm-gutters': {
-      backgroundColor: 'rgba(0,0,0,0.15)',
+      backgroundColor: 'var(--cm-gutter-bg)',
       color: 'var(--ink-muted-on-glass, var(--ink-muted))',
-      borderRight: '1px solid rgba(255,255,255,0.08)',
+      borderRight: '1px solid var(--cm-gutter-border)',
       paddingLeft: '6px',
     },
     '.cm-lineNumbers .cm-gutterElement': {
@@ -34,10 +34,10 @@ export function getEditorTheme(colors: ThemeColors) {
       textAlign: 'right',
     },
     '.cm-activeLine': {
-      backgroundColor: 'rgba(255,255,255,0.04)',
+      backgroundColor: 'var(--cm-active-line-bg)',
     },
     '.cm-activeLineGutter': {
-      backgroundColor: 'rgba(255,255,255,0.06)',
+      backgroundColor: 'var(--cm-active-line-gutter-bg)',
     },
     '&.cm-focused': {
       outline: 'none',
@@ -47,7 +47,7 @@ export function getEditorTheme(colors: ThemeColors) {
       borderLeftWidth: '2px',
     },
     '.cm-selectionBackground, &.cm-focused .cm-selectionBackground': {
-      backgroundColor: 'rgba(255,255,255,0.08)',
+      backgroundColor: 'var(--cm-selection-bg)',
     },
   })
 }

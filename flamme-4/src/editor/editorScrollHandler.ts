@@ -1,7 +1,10 @@
 import { EditorView } from '@codemirror/view'
+import { onEditorViewportScroll } from './preview-update'
 
 let activeFilePath: string | null = null
+const viewFilePaths = new WeakMap<EditorView, string>()
 let scrollTimer: ReturnType<typeof setTimeout> | null = null
+let scrollView: EditorView | null = null
 
 export function setEditorScrollFilePath(path: string | null) {
   activeFilePath = path
@@ -11,24 +14,35 @@ export function getEditorScrollFilePath(): string | null {
   return activeFilePath
 }
 
+export function registerEditorViewFilePath(view: EditorView, path: string | null) {
+  if (path) viewFilePaths.set(view, path)
+  else viewFilePaths.delete(view)
+}
+
+function filePathForView(view: EditorView): string | null {
+  return viewFilePaths.get(view) ?? activeFilePath
+}
+
 function scheduleSave(view: EditorView) {
-  if (!activeFilePath) return
+  const path = filePathForView(view)
+  if (!path) return
+  scrollView = view
   if (scrollTimer) clearTimeout(scrollTimer)
   scrollTimer = setTimeout(() => {
     scrollTimer = null
+    const saveView = scrollView
+    if (!saveView) return
+    const savePath = filePathForView(saveView)
+    if (!savePath) return
     void import('./editorScrollStore').then(({ saveEditorScroll }) => {
-      if (!activeFilePath) return
-      saveEditorScroll(
-        activeFilePath,
-        view.state.selection.main.head,
-        view.scrollDOM.scrollTop,
-      )
+      saveEditorScroll(savePath, saveView.state.selection.main.head, saveView.scrollDOM.scrollTop)
     })
   }, 500)
 }
 
 export const editorScrollHandler = EditorView.domEventHandlers({
   scroll(_event, view) {
+    onEditorViewportScroll(view)
     scheduleSave(view)
     return false
   },

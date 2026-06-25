@@ -29,6 +29,39 @@ export interface LearnNote {
   schema: 'learn_note_v1'
 }
 
+export interface MasteryQuestion {
+  id: string
+  prompt: string
+}
+
+export interface MasteryWrongEntry {
+  id: string
+  targetLabel: string
+  question: string
+  userAnswer: string
+  explanation: string
+  at: string
+}
+
+export interface MasteryQuizSession {
+  targetLabel: string
+  questions: MasteryQuestion[]
+  index: number
+  passedIds: string[]
+}
+
+export interface MasteryStartResponse {
+  target_label: string
+  questions: MasteryQuestion[]
+  count: number
+}
+
+export interface MasteryEvaluateResponse {
+  correct: boolean
+  explanation: string
+  wrong_entry?: MasteryWrongEntry | null
+}
+
 export interface EvidenceItem {
   path: string
   title: string

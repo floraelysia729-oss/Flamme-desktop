@@ -425,6 +425,91 @@ export function patchChatSession(
   )
 }
 
+// ── 掌握测验 ────────────────────────────────────────────────────
+
+export function startMasteryQuiz(
+  sessionId: string,
+  targetLabel: string,
+  learnNote: import('../chat/learn/types').LearnNote,
+) {
+  return pythonFetch<import('../chat/learn/types').MasteryStartResponse>(
+    '/learn/mastery/start',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        target_label: targetLabel,
+        learn_note: learnNote,
+      }),
+    },
+  )
+}
+
+export function evaluateMasteryAnswer(
+  sessionId: string,
+  payload: {
+    target_label: string
+    question_id: string
+    question: string
+    user_answer: string
+    learn_note: import('../chat/learn/types').LearnNote
+  },
+) {
+  return pythonFetch<import('../chat/learn/types').MasteryEvaluateResponse>(
+    '/learn/mastery/evaluate',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        target_label: payload.target_label,
+        question_id: payload.question_id,
+        question: payload.question,
+        user_answer: payload.user_answer,
+        learn_note: payload.learn_note,
+      }),
+    },
+  )
+}
+
+export function completeMasteryQuiz(
+  sessionId: string,
+  targetLabel: string,
+  learnNote: import('../chat/learn/types').LearnNote,
+) {
+  return pythonFetch<{ learn_note: import('../chat/learn/types').LearnNote; target_label: string }>(
+    '/learn/mastery/complete',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        session_id: sessionId,
+        target_label: targetLabel,
+        learn_note: learnNote,
+      }),
+    },
+  )
+}
+
+export function truncateChatSession(
+  sessionId: string,
+  messageIndex: number,
+  learnNote?: import('../chat/learn/types').LearnNote,
+) {
+  return pythonFetch<{ ok: boolean; session_id: string; deleted: number }>(
+    `/chat/sessions/${encodeURIComponent(sessionId)}/truncate`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message_index: messageIndex,
+        learn_note: learnNote ?? undefined,
+      }),
+    },
+  )
+}
+
 export function clearChatSession(sessionId: string) {
   return pythonFetch<{ ok: boolean }>(`/chat/${encodeURIComponent(sessionId)}`, {
     method: 'DELETE',

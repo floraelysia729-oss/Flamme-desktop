@@ -13,7 +13,7 @@ export default function WorkspaceModeToggle() {
 
   return (
     <div
-      className="flex items-center rounded-lg border border-white/[0.08] overflow-hidden ml-1 shrink-0"
+      className="flex items-center rounded-lg border border-white/[0.08] overflow-hidden ml-0.5 shrink-0"
       role="group"
       aria-label="工作区布局"
     >
@@ -23,7 +23,7 @@ export default function WorkspaceModeToggle() {
           <button
             key={id}
             type="button"
-            className={`flex items-center gap-1 px-2 py-1.5 text-[10px] transition-colors ${
+            className={`flex items-center justify-center gap-1 px-1.5 py-1 text-[10px] transition-colors ${
               active
                 ? 'bg-[var(--accent)]/20 text-[var(--ink-on-glass,var(--ink))] ring-1 ring-inset ring-[var(--accent)]/40'
                 : 'text-[var(--ink-muted-on-glass,var(--ink-muted))] hover:bg-white/[0.06]'

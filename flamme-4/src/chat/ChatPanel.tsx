@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { MessageCircle, PanelLeft, X, GraduationCap, BookOpen } from 'lucide-react'
 import { useConnectionStore } from '../api/connection'
-import { getChatSession, listChatSessions, writeVaultFile } from '../api/bridge'
+import { getChatSession, listChatSessions, truncateChatSession, writeVaultFile } from '../api/bridge'
 import { isVaultMode } from '../files'
 import { refreshWikiIndex } from '../shared/ingest'
 import { useWorkspaceStore } from '../shared/workspaceStore'
@@ -15,11 +15,16 @@ import LearnFilePicker from './LearnFilePicker'
 import MessageList from './MessageList'
 import ChatInput from './ChatInput'
 import NotePanel from './learn/NotePanel'
+import NotePanelRailToggle from './learn/NotePanelRailToggle'
+import { useNotePanelUiStore } from './learn/notePanelUiStore'
 import ChatHistorySidebar from './learn/ChatHistorySidebar'
 import EndClassDialog from './learn/EndClassDialog'
 import { loadLearnNoteFromSession, useLearnStore } from './learn/store'
+import { useMasteryQuizStore } from './learn/masteryQuizStore'
 import { emptyLearnNote } from './learn/noteTemplate'
 import { archiveLearnNote } from './learn/archiveLearnNote'
+import { truncateLearnNoteForEdit } from './learn/truncateLearnNote'
+import { useEditorQuoteStore } from '../shared/editorQuoteStore'
 
 interface Props {
   onClose: () => void
@@ -51,6 +56,7 @@ export default function ChatPanel({ onClose }: Props) {
   const mergeLearnNoteFromAi = useLearnStore((s) => s.mergeLearnNoteFromAi)
   const driftToast = useLearnStore((s) => s.driftToast)
   const evidencePack = useLearnStore((s) => s.evidencePack)
+  const notePanelOpen = useNotePanelUiStore((s) => s.open)
   const setEvidencePack = useLearnStore((s) => s.setEvidencePack)
   const archivedNotePath = useLearnStore((s) => s.archivedNotePath)
   const lastArchivedAt = useLearnStore((s) => s.lastArchivedAt)
@@ -59,6 +65,7 @@ export default function ChatPanel({ onClose }: Props) {
   const contextPressure = useLearnStore((s) => s.contextPressure)
   const setContextPressure = useLearnStore((s) => s.setContextPressure)
   const resetLearn = useLearnStore((s) => s.resetLearn)
+  const wrongLog = useMasteryQuizStore((s) => s.wrongLog)
 
   const [historyRefresh, setHistoryRefresh] = useState(0)
   const [endClassOpen, setEndClassOpen] = useState(false)
@@ -79,11 +86,19 @@ export default function ChatPanel({ onClose }: Props) {
           }
         }
         setSessionId(sid)
+        const sessionMode = data.mode === 'learn' || data.mode === 'search' ? data.mode : mode
+        if (sessionMode === 'learn') {
+          useChatStore.setState({ lastLearnSessionId: sid })
+        } else {
+          useChatStore.setState({ lastSearchSessionId: sid })
+        }
         setMessages(loaded)
         if (data.mode === 'learn' || mode === 'learn') {
           const raw = data.learn_note ?? data.learn_mind
-          if (raw) setLearnNote(loadLearnNoteFromSession(raw))
+          const note = raw ? loadLearnNoteFromSession(raw) : null
+          if (note) setLearnNote(note)
           else resetLearn()
+          useLearnStore.getState().rebuildQaMessageLinksFromMessages(loaded, note ?? undefined)
           if (data.evidence_pack) setEvidencePack(data.evidence_pack)
           if (data.selected_files?.length) {
             useChatStore.setState({ selectedFiles: data.selected_files })
@@ -113,17 +128,10 @@ export default function ChatPanel({ onClose }: Props) {
     if (!connected) return
     void (async () => {
       try {
-        const lastId =
-          mode === 'learn'
-            ? useChatStore.getState().lastLearnSessionId
-            : useChatStore.getState().lastSearchSessionId
-        if (lastId) {
-          await loadSession(lastId)
-          return
-        }
         const { sessions } = await listChatSessions(mode)
-        if (!sessions?.length) return
-        await loadSession(sessions[0].session_id)
+        const recentId = sessions?.[0]?.session_id ?? null
+        if (!recentId) return
+        await loadSession(recentId)
       } catch {
         /* 首次无会话 */
       }
@@ -191,11 +199,8 @@ export default function ChatPanel({ onClose }: Props) {
     abortRef.current = null
   }, [])
 
-  const handleSend = useCallback(
-    async (text: string) => {
-      if (!text.trim() || streaming) return
-      if (!connected) return
-
+  const executeChatTurn = useCallback(
+    async (text: string, userMsgIdx: number) => {
       cancelStream()
       const controller = new AbortController()
       abortRef.current = controller
@@ -203,24 +208,15 @@ export default function ChatPanel({ onClose }: Props) {
       const hadNoteConflict = noteConflict
       setNoteConflict(false)
       const chatMode = useChatStore.getState().mode
-      // 无冲突横幅时允许 AI 继续合并（修复误触锁定导致 userEdited 卡死）
       if (chatMode === 'learn' && !hadNoteConflict) {
         useLearnStore.setState({ userEdited: false })
       }
 
-      const cur = useChatStore.getState().messages
-      const idx = cur.length
       const sid = useChatStore.getState().sessionId
       const files =
         chatMode === 'learn' ? useChatStore.getState().selectedFiles : undefined
       const note =
         chatMode === 'learn' ? useLearnStore.getState().learnNote : undefined
-
-      setMessages([
-        ...cur,
-        { role: 'user', content: text },
-        { role: 'assistant', content: '' },
-      ])
 
       const startTime = Date.now()
       let fullContent = ''
@@ -232,7 +228,7 @@ export default function ChatPanel({ onClose }: Props) {
           clearTimeout(contentFlushTimer)
           contentFlushTimer = null
         }
-        patchAssistant(idx + 1, {
+        patchAssistant(userMsgIdx + 1, {
           content: fullContent,
           tokenCount: tokens,
           duration: Math.round((Date.now() - startTime) / 100) / 10,
@@ -264,7 +260,7 @@ export default function ChatPanel({ onClose }: Props) {
             tokens++
             scheduleContentPatch()
           } else if (event.type === 'tool_status') {
-            applyToolStatus(idx + 1, event as ToolStatus & { type?: string })
+            applyToolStatus(userMsgIdx + 1, event as ToolStatus & { type?: string })
             if (
               event.status === 'done' &&
               event.name === 'wiki_create_page' &&
@@ -283,14 +279,18 @@ export default function ChatPanel({ onClose }: Props) {
                 .catch(() => {})
             }
           } else if (event.type === 'tool_call' && event.content) {
-            const prev = useChatStore.getState().messages[idx + 1]
-            patchAssistant(idx + 1, {
+            const prev = useChatStore.getState().messages[userMsgIdx + 1]
+            patchAssistant(userMsgIdx + 1, {
               toolCalls: [...(prev.toolCalls ?? []), event.content],
             })
           } else if (event.type === 'suggested_questions' && event.questions) {
-            patchAssistant(idx + 1, { suggestedQuestions: event.questions })
+            patchAssistant(userMsgIdx + 1, { suggestedQuestions: event.questions })
           } else if (event.type === 'learn_note' && event.note) {
-            const result = mergeLearnNoteFromAi(event.note, event.drift)
+            const mergedNote = loadLearnNoteFromSession(event.note)
+            const result = mergeLearnNoteFromAi(mergedNote, event.drift)
+            if (result === 'applied') {
+              useLearnStore.getState().setQaMessageLink(mergedNote.qaRound, userMsgIdx)
+            }
             if (result === 'skipped') setNoteConflict(true)
           } else if (event.type === 'learn_mind' && event.mind) {
             const result = mergeLearnNoteFromAi(
@@ -303,7 +303,7 @@ export default function ChatPanel({ onClose }: Props) {
             setContextPressure(event.level)
           } else if (event.type === 'error' && event.content) {
             flushContentPatch()
-            patchAssistant(idx + 1, {
+            patchAssistant(userMsgIdx + 1, {
               content: `${fullContent}\n\n**错误:** ${event.content}`.trim(),
             })
             break
@@ -315,7 +315,7 @@ export default function ChatPanel({ onClose }: Props) {
         flushContentPatch()
         const { questions, cleanText } = extractSuggestionQuestions(fullContent)
         if (questions.length > 0) {
-          patchAssistant(idx + 1, {
+          patchAssistant(userMsgIdx + 1, {
             content: cleanText,
             suggestedQuestions: questions,
           })
@@ -326,11 +326,11 @@ export default function ChatPanel({ onClose }: Props) {
         flushContentPatch()
         const err = e as Error
         if (err.name === 'AbortError') {
-          patchAssistant(idx + 1, {
+          patchAssistant(userMsgIdx + 1, {
             content: `${fullContent}\n\n[已取消]`.trim(),
           })
         } else {
-          patchAssistant(idx + 1, { content: `**错误:** ${err.message}` })
+          patchAssistant(userMsgIdx + 1, { content: `**错误:** ${err.message}` })
         }
       } finally {
         setStreaming(false)
@@ -338,17 +338,85 @@ export default function ChatPanel({ onClose }: Props) {
       }
     },
     [
-      streaming,
       connected,
       cancelStream,
       setStreaming,
-      setMessages,
       patchAssistant,
       applyToolStatus,
       mergeLearnNoteFromAi,
       setEvidencePack,
       setContextPressure,
       noteConflict,
+    ],
+  )
+
+  const handleSend = useCallback(
+    async (text: string) => {
+      if (!text.trim() || streaming) return
+      if (!connected) return
+
+      const cur = useChatStore.getState().messages
+      const idx = cur.length
+      setMessages([
+        ...cur,
+        { role: 'user', content: text },
+        { role: 'assistant', content: '' },
+      ])
+      await executeChatTurn(text, idx)
+    },
+    [streaming, connected, setMessages, executeChatTurn],
+  )
+
+  const handleEditUserMessage = useCallback(
+    async (userMsgIdx: number, text: string) => {
+      const trimmed = text.trim()
+      if (!trimmed || streaming || !connected) return
+
+      const cur = useChatStore.getState().messages
+      if (cur[userMsgIdx]?.role !== 'user') return
+
+      const sid = useChatStore.getState().sessionId
+      const chatMode = useChatStore.getState().mode
+      let rolledNote: ReturnType<typeof truncateLearnNoteForEdit> | undefined
+
+      try {
+        if (chatMode === 'learn') {
+          rolledNote = truncateLearnNoteForEdit(
+            useLearnStore.getState().learnNote,
+            cur,
+            userMsgIdx,
+          )
+        }
+        await truncateChatSession(sid, userMsgIdx, rolledNote)
+      } catch (e) {
+        patchAssistant(userMsgIdx + 1, {
+          content: `**错误:** ${(e as Error).message}`,
+        })
+        return
+      }
+
+      if (chatMode === 'learn' && rolledNote) {
+        setLearnNote(rolledNote, false)
+        useLearnStore.setState({ userEdited: false })
+        useLearnStore
+          .getState()
+          .rebuildQaMessageLinksFromMessages(cur.slice(0, userMsgIdx), rolledNote)
+      }
+
+      setMessages([
+        ...cur.slice(0, userMsgIdx),
+        { role: 'user', content: trimmed },
+        { role: 'assistant', content: '' },
+      ])
+      await executeChatTurn(trimmed, userMsgIdx)
+    },
+    [
+      streaming,
+      connected,
+      setMessages,
+      setLearnNote,
+      patchAssistant,
+      executeChatTurn,
     ],
   )
 
@@ -363,6 +431,7 @@ export default function ChatPanel({ onClose }: Props) {
   }
 
   const handleNewSession = () => {
+    useEditorQuoteStore.getState().clearQuote('new-session')
     cancelStream()
     newSession()
     if (mode === 'learn') resetLearn()
@@ -371,6 +440,7 @@ export default function ChatPanel({ onClose }: Props) {
 
   const handleSelectSession = (id: string) => {
     if (streaming) return
+    useEditorQuoteStore.getState().clearQuote('session-change')
     cancelStream()
     void loadSession(id)
   }
@@ -383,6 +453,7 @@ export default function ChatPanel({ onClose }: Props) {
         sessionId: useChatStore.getState().sessionId,
         selectedFiles: useChatStore.getState().selectedFiles,
         archivedNotePath,
+        wrongLog,
       })
       setArchiveMeta(result.path, new Date().toISOString(), 0)
       setArchiveToast(
@@ -473,7 +544,7 @@ export default function ChatPanel({ onClose }: Props) {
             type="button"
             className="underline"
             onClick={() => {
-              setLearnNote(useLearnStore.getState().learnNote, false)
+              useLearnStore.setState({ userEdited: false })
               setNoteConflict(false)
             }}
           >
@@ -499,33 +570,54 @@ export default function ChatPanel({ onClose }: Props) {
           refreshKey={historyRefresh}
         />
 
-        <div className="flex flex-1 min-h-0 min-w-0 flex-col">
-          <MessageList
-            messages={messages}
-            streaming={streaming}
-            onPickSuggestion={(q) => void handleSend(q)}
-          />
-          <ChatInput
-            streaming={streaming}
-            onSend={(t) => void handleSend(t)}
-            onCancel={cancelStream}
-          />
-        </div>
-
-        {mode === 'learn' && (
-          <NotePanel
-            note={learnNote}
-            evidencePack={evidencePack}
-            onNoteChange={handleNoteChange}
-            contextPressure={contextPressure}
-            driftToast={driftToast}
-          />
+        {mode === 'learn' ? (
+          <div className="learn-note-with-panel relative flex flex-1 min-h-0 min-w-0">
+            <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+              <MessageList
+                messages={messages}
+                streaming={streaming}
+                onPickSuggestion={(q) => void handleSend(q)}
+                onEditUserMessage={(idx, text) => void handleEditUserMessage(idx, text)}
+              />
+              <ChatInput
+                streaming={streaming}
+                onSend={(t) => void handleSend(t)}
+                onCancel={cancelStream}
+              />
+            </div>
+            {notePanelOpen && (
+              <NotePanel
+                note={learnNote}
+                sessionId={sessionId}
+                evidencePack={evidencePack}
+                onNoteChange={handleNoteChange}
+                contextPressure={contextPressure}
+                driftToast={driftToast}
+              />
+            )}
+            <NotePanelRailToggle />
+          </div>
+        ) : (
+          <div className="flex flex-1 min-h-0 min-w-0 flex-col">
+            <MessageList
+              messages={messages}
+              streaming={streaming}
+              onPickSuggestion={(q) => void handleSend(q)}
+              onEditUserMessage={(idx, text) => void handleEditUserMessage(idx, text)}
+            />
+            <ChatInput
+              streaming={streaming}
+              onSend={(t) => void handleSend(t)}
+              onCancel={cancelStream}
+            />
+          </div>
         )}
       </div>
 
       <EndClassDialog
         open={endClassOpen}
         note={learnNote}
+        wrongLog={wrongLog}
         archivedNotePath={archivedNotePath}
         lastArchivedAt={lastArchivedAt}
         onConfirm={handleEndClass}

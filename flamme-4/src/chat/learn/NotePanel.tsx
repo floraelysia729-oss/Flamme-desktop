@@ -1,25 +1,20 @@
 import { useCallback, useRef, useState } from 'react'
 import { BookOpen } from 'lucide-react'
 import KnowledgeTreeView from './KnowledgeTreeView'
+import MasteryQuizPanel from './MasteryQuizPanel'
+import QaSummariesView from './QaSummariesView'
 import SectionBlock from './SectionBlock'
 import { toggleSectionLock, updateSection } from './noteEdit'
+import {
+  NOTE_PANEL_MAX_WIDTH,
+  NOTE_PANEL_MIN_WIDTH,
+  useNotePanelUiStore,
+} from './notePanelUiStore'
 import type { EvidenceItem, LearnNote } from './types'
-
-const NOTE_WIDTH_KEY = 'flamme-learn-note-width'
-const DEFAULT_W = 320
-const MIN_W = 220
-const MAX_W = 480
-
-function loadWidth() {
-  try {
-    const n = Number(localStorage.getItem(NOTE_WIDTH_KEY))
-    if (Number.isFinite(n) && n >= MIN_W && n <= MAX_W) return n
-  } catch { /* */ }
-  return DEFAULT_W
-}
 
 interface Props {
   note: LearnNote
+  sessionId: string
   evidencePack: EvidenceItem[]
   onNoteChange: (note: LearnNote, fromUser?: boolean) => void
   contextPressure: 'warn' | 'critical' | null
@@ -28,13 +23,16 @@ interface Props {
 
 export default function NotePanel({
   note,
+  sessionId,
   evidencePack,
   onNoteChange,
   contextPressure,
   driftToast,
 }: Props) {
-  const [width, setWidth] = useState(loadWidth)
+  const width = useNotePanelUiStore((s) => s.width)
+  const setWidth = useNotePanelUiStore((s) => s.setWidth)
   const dragging = useRef(false)
+  const [quizTarget, setQuizTarget] = useState<string | null>(null)
 
   const onResizeStart = useCallback(
     (e: React.MouseEvent) => {
@@ -46,7 +44,9 @@ export default function NotePanel({
       document.body.style.userSelect = 'none'
       const onMove = (ev: MouseEvent) => {
         if (!dragging.current) return
-        const next = Math.round(Math.min(MAX_W, Math.max(MIN_W, startW + (startX - ev.clientX))))
+        const next = Math.round(
+          Math.min(NOTE_PANEL_MAX_WIDTH, Math.max(NOTE_PANEL_MIN_WIDTH, startW + (startX - ev.clientX))),
+        )
         setWidth(next)
       }
       const onUp = () => {
@@ -55,26 +55,27 @@ export default function NotePanel({
         document.body.style.userSelect = ''
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
-        try {
-          localStorage.setItem(NOTE_WIDTH_KEY, String(width))
-        } catch { /* */ }
       }
       window.addEventListener('mousemove', onMove)
       window.addEventListener('mouseup', onUp)
     },
-    [width],
+    [width, setWidth],
   )
 
-  /** 仅正文编辑算用户改动；锁定由后端按块跳过，不应阻断全局 AI 合并 */
   const handleContentEdit = (n: LearnNote) => onNoteChange(n, true)
   const handleLockToggle = (n: LearnNote) => onNoteChange(n, false)
   const sec = (id: LearnNote['sections'][0]['id']) =>
     note.sections.find((s) => s.id === id)!
 
+  const handleQuizNoteUpdate = (updated: LearnNote) => {
+    onNoteChange(updated, false)
+  }
+
   return (
     <aside
       className="mind-panel relative shrink-0 flex flex-col min-h-0 border-l border-[var(--border)]/40"
-      style={{ width }}
+      style={{ width, maxWidth: '45vw' }}
+      aria-label="学习笔记"
     >
       <div
         role="separator"
@@ -104,7 +105,17 @@ export default function NotePanel({
         </p>
       )}
 
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div className="relative flex-1 min-h-0 overflow-y-auto">
+        {quizTarget && (
+          <MasteryQuizPanel
+            targetLabel={quizTarget}
+            sessionId={sessionId}
+            learnNote={note}
+            onLearnNoteUpdate={handleQuizNoteUpdate}
+            onClose={() => setQuizTarget(null)}
+          />
+        )}
+
         <SectionBlock
           id="knowledge_tree"
           content={sec('knowledge_tree').content}
@@ -116,6 +127,7 @@ export default function NotePanel({
           <KnowledgeTreeView
             content={sec('knowledge_tree').content}
             rootTopic={note.rootTopic}
+            onCurrentNodeClick={(label) => setQuizTarget(label)}
           />
         </SectionBlock>
 
@@ -127,7 +139,9 @@ export default function NotePanel({
           maxHeight="200px"
           onContentChange={(c) => handleContentEdit(updateSection(note, 'qa_summaries', c))}
           onToggleLock={() => handleLockToggle(toggleSectionLock(note, 'qa_summaries'))}
-        />
+        >
+          <QaSummariesView content={sec('qa_summaries').content} />
+        </SectionBlock>
 
         <SectionBlock
           id="types_and_conclusions"

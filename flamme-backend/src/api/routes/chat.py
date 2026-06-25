@@ -35,6 +35,11 @@ class SessionPatchRequest(BaseModel):
     title: str | None = None
 
 
+class SessionTruncateRequest(BaseModel):
+    message_index: int
+    learn_note: dict | None = None
+
+
 def _build_thread_orchestrator(cfg: Config):
     """在 producer 线程中构建独立的 Orchestrator（每个线程独立 SQLite 连接）"""
     from src.api.runtime import build_runtime
@@ -202,3 +207,16 @@ async def patch_session(session_id: str, req: SessionPatchRequest, request: Requ
         conv_store.upsert_meta(session_id, **fields)
     conv_store.close()
     return {"ok": True, "session_id": session_id}
+
+
+@router.post("/chat/sessions/{session_id}/truncate")
+async def truncate_session(session_id: str, req: SessionTruncateRequest, request: Request):
+    """编辑重发：截断 message_index 及之后的消息，可选同步 learn_note"""
+    from src.db.conversation import ConversationStore
+    cfg = get_request_config_or_default(request)
+    conv_store = ConversationStore(cfg.conversations_db)
+    deleted = conv_store.truncate_from_message_index(session_id, req.message_index)
+    if req.learn_note is not None:
+        conv_store.upsert_meta(session_id, learn_mind=req.learn_note)
+    conv_store.close()
+    return {"ok": True, "session_id": session_id, "deleted": deleted}

@@ -1,6 +1,7 @@
 import { writeVaultFile, patchChatSession } from '../../api/bridge'
 import { useConnectionStore } from '../../api/connection'
-import type { LearnNote } from './types'
+import type { LearnNote, MasteryWrongEntry } from './types'
+import { dedupeWrongEntries } from './masteryQuizUtils'
 import { toMarkdown } from './parseLearnNote'
 
 function sanitizeTopic(topic: string): string {
@@ -14,14 +15,31 @@ function todayStr(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+/** 下课存档时追加错题回顾章节（可单测） */
+export function formatWrongLogSection(entries: MasteryWrongEntry[]): string {
+  const unique = dedupeWrongEntries(entries)
+  if (!unique.length) return ''
+  const lines = ['## 错题回顾', '']
+  for (const e of unique) {
+    lines.push(`### ${e.targetLabel}`, '')
+    lines.push(`**题目**：${e.question}`, '')
+    lines.push(`**你的回答**：${e.userAnswer}`, '')
+    lines.push(`**解析**：${e.explanation}`, '')
+    lines.push('')
+  }
+  return lines.join('\n')
+}
+
 function buildArchiveBody(
   note: LearnNote,
   sessionId: string,
   sources: string[],
   notePath: string,
   createdDate: string,
+  wrongLog: MasteryWrongEntry[] = [],
 ): string {
   const sourcesYaml = JSON.stringify(sources)
+  const wrongSection = formatWrongLogSection(wrongLog)
 
   return `---
 type: learn-session
@@ -35,7 +53,7 @@ archived_note_path: ${notePath}
 ---
 
 ${toMarkdown(note)}
-`
+${wrongSection ? `\n${wrongSection}` : ''}`
 }
 
 export interface ArchiveResult {
@@ -48,10 +66,12 @@ export async function archiveLearnNote(opts: {
   sessionId: string
   selectedFiles: string[]
   archivedNotePath: string | null
+  wrongLog?: MasteryWrongEntry[]
 }): Promise<ArchiveResult> {
   const dir = useConnectionStore.getState().learnNotesDir || '学习笔记'
   const topic = sanitizeTopic(opts.note.rootTopic)
   const created = todayStr()
+  const wrongLog = opts.wrongLog ?? []
 
   if (!opts.archivedNotePath) {
     const path = `${dir}/${created}-${topic}.md`.replace(/\\/g, '/')
@@ -61,6 +81,7 @@ export async function archiveLearnNote(opts: {
       opts.selectedFiles,
       path,
       created,
+      wrongLog,
     )
     await writeVaultFile(path, content)
     await patchChatSession(opts.sessionId, {
@@ -78,6 +99,7 @@ export async function archiveLearnNote(opts: {
     opts.selectedFiles,
     path,
     created,
+    wrongLog,
   )
 
   await writeVaultFile(path, content)

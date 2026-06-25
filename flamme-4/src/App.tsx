@@ -14,8 +14,10 @@ import ThemeBackground from './theme/ThemeBackground'
 import { ThemeProvider, useTheme } from './theme/ThemeContext'
 import { useConnectionStore } from './api/connection'
 import { useVaultStore } from './vault/store'
+import { useVaultUiStore } from './vault/vaultUiStore'
 import { useVaultFsSync } from './vault/useVaultFsSync'
 import { isVaultMode } from './files'
+import { useEditorSplitStore } from './editor/editorSplitStore'
 import { adjustFontScale, resetFontScale } from './shared/fontScale'
 
 declare const __FEATURE_TAURI__: boolean
@@ -99,6 +101,8 @@ function AppContent() {
 
   useEffect(() => {
     void useIngestStore.persist.rehydrate()
+    void useVaultUiStore.persist.rehydrate()
+    void useEditorSplitStore.persist.rehydrate()
   }, [])
 
   useEffect(() => {
@@ -124,6 +128,15 @@ function AppContent() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault()
         if (view === 'editor') toggleSidebar()
+        return
+      }
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        (e.key === '\\' || e.code === 'Backslash')
+      ) {
+        e.preventDefault()
+        if (view === 'editor') useEditorSplitStore.getState().splitRight()
         return
       }
       if ((e.ctrlKey || e.metaKey) && e.key === '\\') {

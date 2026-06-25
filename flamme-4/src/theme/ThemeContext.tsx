@@ -27,6 +27,8 @@ import {
   type ThemeColors,
   type VisualTheme,
 } from './useThemeColors'
+import hljsDarkUrl from 'highlight.js/styles/github-dark.min.css?url'
+import hljsLightUrl from 'highlight.js/styles/github.min.css?url'
 
 export { lightUiColors, darkUiColors } from './presets'
 export { getDefaultEditorColors } from './editorColorDefaults'
@@ -35,6 +37,18 @@ export type ColorMode = 'light' | 'dark'
 
 const VISUAL_THEME_ORDER = ['xilan', 'wushan', 'zhihe'] as const
 const COLOR_MODE_KEY = 'flamme-color-mode'
+const HLJS_THEME_ID = 'flamme-hljs-theme'
+
+function applyHljsTheme(colorMode: ColorMode) {
+  let link = document.getElementById(HLJS_THEME_ID) as HTMLLinkElement | null
+  if (!link) {
+    link = document.createElement('link')
+    link.id = HLJS_THEME_ID
+    link.rel = 'stylesheet'
+    document.head.appendChild(link)
+  }
+  link.href = colorMode === 'dark' ? hljsDarkUrl : hljsLightUrl
+}
 
 function loadColorMode(): ColorMode {
   try {
@@ -287,6 +301,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', colorMode === 'dark')
     document.documentElement.classList.remove('theme-xilan', 'theme-wushan', 'theme-zhihe')
     document.documentElement.classList.add(`theme-${base.visualTheme}`)
+    applyHljsTheme(colorMode)
   }, [colorMode, base.visualTheme])
 
   useEffect(() => {

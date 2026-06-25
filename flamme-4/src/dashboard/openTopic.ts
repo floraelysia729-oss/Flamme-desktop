@@ -1,4 +1,5 @@
 import { getFileStore } from '../files'
+import { openFileInEditor } from '../editor/openFileInEditor'
 
 function normPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/^\.\//, '')
@@ -24,7 +25,7 @@ export async function openTopicDocument(
 
   for (const id of candidates) {
     if (nodes[id]?.type === 'file') {
-      await Promise.resolve(store.openFile(id))
+      await openFileInEditor(id)
       return true
     }
   }
@@ -37,7 +38,7 @@ export async function openTopicDocument(
   })
 
   if (hit) {
-    await Promise.resolve(store.openFile(hit))
+    await openFileInEditor(hit)
     return true
   }
 

@@ -18,6 +18,7 @@ interface TreeRowProps {
   nextStepKey: string | null
   expandedOverride: Set<string> | null
   onToggle: () => void
+  onCurrentNodeClick?: (label: string) => void
 }
 
 function StatusBadge({ status }: { status: TreeNodeStatus | null }) {
@@ -37,6 +38,7 @@ function TreeRow({
   nextStepKey,
   expandedOverride,
   onToggle,
+  onCurrentNodeClick,
 }: TreeRowProps) {
   const hasChildren = node.children.length > 0
   const defaultOpen = shouldDefaultExpand(nodePath, currentPathKeys, depth)
@@ -89,10 +91,24 @@ function TreeRow({
         <div className="kt-row-body min-w-0 flex-1">
           <div className="kt-row-head">
             <StatusBadge status={node.status} />
-            <span className="kt-label" title={node.label}>
-              {node.label}
-            </span>
+            {isCurrent && onCurrentNodeClick ? (
+              <button
+                type="button"
+                className="kt-label kt-label--clickable"
+                title={node.label}
+                onClick={() => onCurrentNodeClick(node.label)}
+              >
+                {node.label}
+              </button>
+            ) : (
+              <span className="kt-label" title={node.label}>
+                {node.label}
+              </span>
+            )}
           </div>
+          {isCurrent && onCurrentNodeClick && (
+            <span className="kt-quiz-hint">点击测验掌握</span>
+          )}
           {isNext && (
             <span className="kt-next-hint">建议下一步</span>
           )}
@@ -110,6 +126,7 @@ function TreeRow({
               nextStepKey={nextStepKey}
               expandedOverride={expandedOverride}
               onToggle={onToggle}
+              onCurrentNodeClick={onCurrentNodeClick}
             />
           ))}
         </div>
@@ -121,9 +138,10 @@ function TreeRow({
 interface Props {
   content: string
   rootTopic?: string
+  onCurrentNodeClick?: (label: string) => void
 }
 
-export default function KnowledgeTreeView({ content, rootTopic }: Props) {
+export default function KnowledgeTreeView({ content, rootTopic, onCurrentNodeClick }: Props) {
   const analysis = useMemo(() => analyzeKnowledgeTree(content), [content])
   const [expandAll, setExpandAll] = useState<boolean | null>(null)
 
@@ -234,6 +252,7 @@ export default function KnowledgeTreeView({ content, rootTopic }: Props) {
             nextStepKey={nextStepKey}
             expandedOverride={expandedOverride}
             onToggle={handleToggle}
+            onCurrentNodeClick={onCurrentNodeClick}
           />
         ))}
       </div>

@@ -361,7 +361,7 @@ export default function IngestPanel({ variant = 'icon', disabled = false, onComp
         <button
           ref={btnRef}
           type="button"
-          className={`tool-btn p-2 rounded-lg disabled:opacity-40 relative ${running ? 'ring-1 ring-[var(--accent)]/50' : ''}`}
+          className={`tool-btn tool-btn--icon disabled:opacity-40 relative ${running ? 'ring-1 ring-[var(--accent)]/50' : ''}`}
           onClick={handleOpen}
           disabled={!enabled || checking}
           title={enabled ? '检查并摄入（可后台运行）' : '请先连接后端并选择 Vault'}

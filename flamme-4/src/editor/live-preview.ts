@@ -9,9 +9,10 @@ import {
   ViewPlugin, ViewUpdate, Decoration, type DecorationSet, EditorView,
 } from '@codemirror/view'
 import { syntaxTree } from '@codemirror/language'
-import { RangeSetBuilder } from '@codemirror/state'
 import { blockquoteFenceLineRange, lineInBlockquoteFence } from './blockquote-code'
 import { buildPreviewWidgetMask, posInRanges } from './preview-context'
+import { pushHideReplaceRanges, finishPendingDecorations } from './decoration-ranges'
+import { syntaxPreviewUpdate } from './preview-update'
 
 // Shared decoration instances (avoid creating new ones per range)
 const hide = Decoration.replace({})
@@ -24,9 +25,7 @@ const livePreview = ViewPlugin.fromClass(class {
   }
 
   update(update: ViewUpdate) {
-    if (update.docChanged || update.viewportChanged || update.selectionSet) {
-      this.decorations = build(update.view)
-    }
+    syntaxPreviewUpdate(update, this, build)
   }
 }, {
   decorations: v => v.decorations,
@@ -55,6 +54,8 @@ function build(view: EditorView): DecorationSet {
         posInRanges(node.to, mask.html) ||
         posInRanges(node.from, mask.tables) ||
         posInRanges(node.to, mask.tables) ||
+        posInRanges(node.from, mask.fencedCode) ||
+        posInRanges(node.to, mask.fencedCode) ||
         posInRanges(node.from, mask.internalLinks) ||
         posInRanges(node.to, mask.internalLinks) ||
         posInRanges(node.from, mask.anchorTargets) ||
@@ -73,12 +74,12 @@ function build(view: EditorView): DecorationSet {
       switch (node.name) {
         // Heading # markers
         case 'HeaderMark':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // Bold/italic ** * markers
         case 'EmphasisMark':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // Inline code ` markers (but not fenced code block ```)
@@ -87,11 +88,11 @@ function build(view: EditorView): DecorationSet {
           const lineNo = view.state.doc.lineAt(node.from).number
           const inBqFence = lineInBlockquoteFence(view.state.doc, lineNo)
           if (parent && parent.name === 'InlineCode') {
-            ranges.push({ from: node.from, to: node.to })
+            pushHideReplaceRanges(view, ranges, node.from, node.to)
           } else if (parent && parent.name === 'FencedCode') {
-            ranges.push({ from: node.from, to: node.to })
+            pushHideReplaceRanges(view, ranges, node.from, node.to)
           } else if (inBqFence) {
-            ranges.push({ from: node.from, to: node.to })
+            pushHideReplaceRanges(view, ranges, node.from, node.to)
           }
           break
         }
@@ -100,24 +101,24 @@ function build(view: EditorView): DecorationSet {
         case 'QuoteMark': {
           const line = view.state.doc.lineAt(node.from)
           if (!/^\s*>\s*```/.test(line.text)) {
-            ranges.push({ from: node.from, to: node.to })
+            pushHideReplaceRanges(view, ranges, node.from, node.to)
           }
           break
         }
 
         // Link delimiters [ ] ( )
         case 'LinkMark':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // URL inside link — hide the actual URL
         case 'URL':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // List item markers (- * 1.)
         case 'ListMark':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // Horizontal rule markers
@@ -127,7 +128,7 @@ function build(view: EditorView): DecorationSet {
 
         // Strikethrough ~~ markers
         case 'StrikethroughMark':
-          ranges.push({ from: node.from, to: node.to })
+          pushHideReplaceRanges(view, ranges, node.from, node.to)
           break
 
         // YAML frontmatter --- delimiters (skip — frontmatter-preview handles display)
@@ -145,7 +146,12 @@ function build(view: EditorView): DecorationSet {
       if (line.number !== cursorLine) {
         const prefix = line.text.match(/^(\s*>\s*)/)
         if (prefix) {
-          ranges.push({ from: line.from, to: line.from + prefix[1].length })
+          pushHideReplaceRanges(
+            view,
+            ranges,
+            line.from,
+            line.from + prefix[1].length,
+          )
         }
       }
       if (line.to >= to) break
@@ -153,18 +159,13 @@ function build(view: EditorView): DecorationSet {
     }
   }
 
-  // Sort by position (required by RangeSetBuilder)
-  ranges.sort((a, b) => a.from - b.from || a.to - b.to)
-
-  const builder = new RangeSetBuilder<Decoration>()
-  let pos = 0
-  for (const r of ranges) {
-    if (r.from >= pos) {
-      builder.add(r.from, r.to, hide)
-      pos = r.to
-    }
-  }
-  return builder.finish()
+  const pending = ranges.map((r) => ({
+    from: r.from,
+    to: r.to,
+    deco: hide,
+    replace: true as const,
+  }))
+  return finishPendingDecorations(view, pending)
 }
 
 export { livePreview }

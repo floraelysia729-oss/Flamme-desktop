@@ -9,7 +9,7 @@ import {
   WidgetType,
   type ViewUpdate,
 } from '@codemirror/view'
-import { EditorSelection, RangeSetBuilder } from '@codemirror/state'
+import { EditorSelection } from '@codemirror/state'
 import { buildPreviewWidgetMask } from './preview-context'
 import {
   resolveAnchorPos,
@@ -19,7 +19,8 @@ import {
 } from '../shared/markdownAnchors'
 import { saveEditorScroll } from './editorScrollStore'
 import { getEditorScrollFilePath } from './editorScrollHandler'
-
+import { finishPendingDecorations, spansMultipleLines, type PendingDecoration } from './decoration-ranges'
+import { widgetPreviewUpdate } from './preview-update'
 class AnchorLinkWidget extends WidgetType {
   constructor(
     readonly label: string,
@@ -51,7 +52,7 @@ class AnchorLinkWidget extends WidgetType {
 }
 
 function pushCollapsedAnchorLine(
-  pending: { from: number; to: number; deco: Decoration }[],
+  pending: PendingDecoration[],
   view: EditorView,
   from: number,
   to: number,
@@ -82,12 +83,14 @@ function buildAnchorDecorations(view: EditorView): DecorationSet {
   const head = view.state.selection.main.head
   const doc = view.state.doc.toString()
   const mask = buildPreviewWidgetMask(view, head)
-  const pending: { from: number; to: number; deco: Decoration }[] = []
+  const pending: PendingDecoration[] = []
 
   for (const link of mask.internalLinks) {
+    if (spansMultipleLines(view, link.from, link.to)) continue
     pending.push({
       from: link.from,
       to: link.to,
+      replace: true,
       deco: Decoration.replace({
         widget: new AnchorLinkWidget(link.label, link.anchorId),
         inclusive: false,
@@ -122,16 +125,7 @@ function buildAnchorDecorations(view: EditorView): DecorationSet {
     }
   }
 
-  pending.sort((a, b) => a.from - b.from || a.to - b.to)
-
-  const builder = new RangeSetBuilder<Decoration>()
-  let lastTo = 0
-  for (const { from, to, deco } of pending) {
-    if (from < lastTo) continue
-    builder.add(from, to, deco)
-    lastTo = to
-  }
-  return builder.finish()
+  return finishPendingDecorations(view, pending)
 }
 
 export function navigateToPos(view: EditorView, pos: number, filePath?: string | null) {
@@ -167,21 +161,6 @@ function handleAnchorClick(event: MouseEvent, view: EditorView): boolean {
   return navigateToAnchor(view, anchorId)
 }
 
-let anchorRebuildScheduled = false
-let anchorPendingView: EditorView | null = null
-
-function scheduleAnchorRebuild(plugin: { decorations: DecorationSet }, view: EditorView) {
-  anchorPendingView = view
-  if (anchorRebuildScheduled) return
-  anchorRebuildScheduled = true
-  requestAnimationFrame(() => {
-    anchorRebuildScheduled = false
-    const v = anchorPendingView
-    anchorPendingView = null
-    if (v) plugin.decorations = buildAnchorDecorations(v)
-  })
-}
-
 export const anchorLinkPlugin = ViewPlugin.fromClass(
   class {
     decorations: DecorationSet
@@ -191,13 +170,7 @@ export const anchorLinkPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        if (update.docChanged) {
-          scheduleAnchorRebuild(this, update.view)
-        } else {
-          this.decorations = buildAnchorDecorations(update.view)
-        }
-      }
+      widgetPreviewUpdate(update, this, buildAnchorDecorations)
     }
   },
   { decorations: (v) => v.decorations },

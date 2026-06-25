@@ -21,6 +21,7 @@ class EvidenceItem:
 class SessionContext:
     learn_mind: dict | None = None  # stores learn_note_v1 JSON
     learn_note: dict | None = None
+    mastery_quiz: dict | None = None
     evidence_pack: list[EvidenceItem] = field(default_factory=list)
     tool_digest: list[dict] = field(default_factory=list)
     compact_generation: int = 0
@@ -35,6 +36,7 @@ class SessionContext:
         return {
             "learn_mind": note,
             "learn_note": note,
+            "mastery_quiz": self.mastery_quiz,
             "evidence_pack": self.evidence_dicts(),
             "tool_digest": self.tool_digest,
             "compact_generation": self.compact_generation,
@@ -61,6 +63,7 @@ class SessionContext:
         return cls(
             learn_mind=note,
             learn_note=note,
+            mastery_quiz=data.get("mastery_quiz") if isinstance(data.get("mastery_quiz"), dict) else None,
             evidence_pack=pack,
             tool_digest=list(data.get("tool_digest") or []),
             compact_generation=int(data.get("compact_generation") or 0),

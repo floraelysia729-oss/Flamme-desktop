@@ -11,9 +11,12 @@ import {
 } from '@codemirror/view'
 import { RangeSetBuilder } from '@codemirror/state'
 import { getFileStore } from '../files'
+import { openFileInEditor } from './openFileInEditor'
 import { parseWikilinkTarget, resolveVaultLink } from '../chat/resolveVaultLink'
 import { buildPreviewWidgetMask } from './preview-context'
 import { scanWikilinks } from './wikilink-ranges'
+import { finishPendingDecorations, spansMultipleLines } from './decoration-ranges'
+import { widgetPreviewShouldRebuild, widgetPreviewUpdate } from './preview-update'
 
 class WikilinkWidget extends WidgetType {
   constructor(readonly title: string) {
@@ -42,12 +45,14 @@ function buildWikilinks(view: EditorView): DecorationSet {
   const head = view.state.selection.main.head
   const doc = view.state.doc.toString()
   const mask = buildPreviewWidgetMask(view, head)
-  const pending: { from: number; to: number; deco: Decoration }[] = []
+  const pending: { from: number; to: number; deco: Decoration; replace?: boolean }[] = []
 
   for (const { from, to, title } of mask.wikilinks) {
+    if (spansMultipleLines(view, from, to)) continue
     pending.push({
       from,
       to,
+      replace: true,
       deco: Decoration.replace({
         widget: new WikilinkWidget(title),
         inclusive: false,
@@ -69,14 +74,7 @@ function buildWikilinks(view: EditorView): DecorationSet {
 
   pending.sort((a, b) => a.from - b.from || a.to - b.to)
 
-  const builder = new RangeSetBuilder<Decoration>()
-  let lastTo = 0
-  for (const { from, to, deco } of pending) {
-    if (from < lastTo) continue
-    builder.add(from, to, deco)
-    lastTo = to
-  }
-  return builder.finish()
+  return finishPendingDecorations(view, pending)
 }
 
 export const wikilinkPlugin = ViewPlugin.fromClass(
@@ -88,15 +86,13 @@ export const wikilinkPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildWikilinks(update.view)
-      }
+      widgetPreviewUpdate(update, this, buildWikilinks)
     }
   },
   { decorations: (v) => v.decorations },
 )
 
-function navigateWikilink(event: MouseEvent): boolean {
+function navigateWikilink(event: MouseEvent, newPane = false): boolean {
   const el = (event.target as HTMLElement).closest('.cm-wikilink')
   let title: string | null = null
   if (el) {
@@ -110,7 +106,7 @@ function navigateWikilink(event: MouseEvent): boolean {
 
   const path = resolveVaultLink(title, getFileStore().nodes)
   if (path) {
-    void Promise.resolve(getFileStore().openFile(path))
+    void openFileInEditor(path, { newPane })
     return true
   }
 
@@ -126,6 +122,11 @@ export const wikilinkClickHandler = EditorView.domEventHandlers({
   },
   mousedown(event) {
     if (!(event.ctrlKey || event.metaKey)) return false
-    return navigateWikilink(event)
+    const newPane = event.shiftKey
+    return navigateWikilink(event, newPane)
+  },
+  auxclick(event) {
+    if (event.button !== 1) return false
+    return navigateWikilink(event, true)
   },
 })

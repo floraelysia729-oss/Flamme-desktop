@@ -145,7 +145,7 @@ function ScopeTreeRow({
 export default function LearnFilePicker({ selected, onChange }: Props) {
   const rootId = useFileStore((s) => s.rootId)
   const nodes = useFileStore((s) => s.nodes)
-  const [open, setOpen] = useState(true)
+  const [open, setOpen] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set())
 
   const tree = useMemo(

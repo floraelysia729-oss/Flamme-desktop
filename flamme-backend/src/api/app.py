@@ -6,7 +6,7 @@ import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from src.api.routes import activity, chat, documents, graph, ingest, pipeline, resolve, status
+from src.api.routes import activity, chat, documents, graph, ingest, learn, pipeline, resolve, status
 from src.deps_check import check_ingest_dependencies, format_missing_deps_log
 from src.infra.log_config import configure_logging, log_file_path
 
@@ -30,6 +30,7 @@ def root():
 
 
 app.include_router(chat.router, prefix="/api")
+app.include_router(learn.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(graph.router, prefix="/api")
 app.include_router(ingest.router, prefix="/api")

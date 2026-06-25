@@ -12,6 +12,8 @@ import {
 import { RangeSetBuilder } from '@codemirror/state'
 import { buildPreviewWidgetMask } from './preview-context'
 import { scanHtmlLineBlocks, sanitizeHtmlSnippet } from './html-ranges'
+import { finishPendingDecorations, spansMultipleLines } from './decoration-ranges'
+import { widgetPreviewUpdate } from './preview-update'
 
 class HtmlPreviewWidget extends WidgetType {
   constructor(readonly html: string) {
@@ -37,12 +39,14 @@ class HtmlPreviewWidget extends WidgetType {
 function buildHtmlDecorations(view: EditorView): DecorationSet {
   const head = view.state.selection.main.head
   const mask = buildPreviewWidgetMask(view, head)
-  const pending: { from: number; to: number; deco: Decoration }[] = []
+  const pending: { from: number; to: number; deco: Decoration; replace?: boolean }[] = []
 
   for (const { from, to, html } of mask.html) {
+    if (spansMultipleLines(view, from, to)) continue
     pending.push({
       from,
       to,
+      replace: true,
       deco: Decoration.replace({
         widget: new HtmlPreviewWidget(html),
         inclusive: false,
@@ -60,16 +64,7 @@ function buildHtmlDecorations(view: EditorView): DecorationSet {
     }
   }
 
-  pending.sort((a, b) => a.from - b.from || a.to - b.to)
-
-  const builder = new RangeSetBuilder<Decoration>()
-  let lastTo = 0
-  for (const { from, to, deco } of pending) {
-    if (from < lastTo) continue
-    builder.add(from, to, deco)
-    lastTo = to
-  }
-  return builder.finish()
+  return finishPendingDecorations(view, pending)
 }
 
 export const htmlPreviewPlugin = ViewPlugin.fromClass(
@@ -81,9 +76,7 @@ export const htmlPreviewPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildHtmlDecorations(update.view)
-      }
+      widgetPreviewUpdate(update, this, buildHtmlDecorations)
     }
   },
   { decorations: (v) => v.decorations },

@@ -11,6 +11,7 @@ import {
 import { syntaxTree } from '@codemirror/language'
 import { RangeSetBuilder } from '@codemirror/state'
 import { blockquoteFenceLineRange } from './blockquote-code'
+import { syntaxPreviewUpdate } from './preview-update'
 
 const fencedLine = Decoration.line({ class: 'cm-fenced-code-line' })
 const quoteLine = Decoration.line({ class: 'cm-blockquote-line' })
@@ -79,9 +80,7 @@ export const blockStylePlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildBlockStyles(update.view)
-      }
+      syntaxPreviewUpdate(update, this, buildBlockStyles)
     }
   },
   { decorations: (v) => v.decorations },

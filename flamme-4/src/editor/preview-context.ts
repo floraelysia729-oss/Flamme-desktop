@@ -11,6 +11,8 @@ import type { GfmTableRange } from './table-ranges'
 import { scanGfmTableBlocks } from './table-ranges'
 import type { AnchorTarget, InternalMdLink } from '../shared/markdownAnchors'
 import { scanAnchorTargets, scanInternalMdLinks } from '../shared/markdownAnchors'
+import type { FencedCodeRange } from './fenced-code-ranges'
+import { scanFencedCodeBlocks } from './fenced-code-ranges'
 import { shouldRenderWidget } from './viewport-scope'
 
 export interface PreviewWidgetMask {
@@ -18,6 +20,7 @@ export interface PreviewWidgetMask {
   wikilinks: WikilinkRange[]
   html: HtmlBlockRange[]
   tables: GfmTableRange[]
+  fencedCode: FencedCodeRange[]
   internalLinks: InternalMdLink[]
   anchorTargets: AnchorTarget[]
   frontmatter: FrontmatterRange | null
@@ -52,6 +55,7 @@ export function buildPreviewWidgetMask(
     wikilinks: activeWidgetRanges(view, cursor, scanWikilinks(doc)),
     html: activeWidgetRanges(view, cursor, scanHtmlLineBlocks(doc)),
     tables: activeWidgetRanges(view, cursor, scanGfmTableBlocks(doc)),
+    fencedCode: activeWidgetRanges(view, cursor, scanFencedCodeBlocks(view.state)),
     internalLinks: activeWidgetRanges(view, cursor, scanInternalMdLinks(doc)),
     anchorTargets: activeWidgetRanges(view, cursor, scanAnchorTargets(doc)),
     frontmatter,

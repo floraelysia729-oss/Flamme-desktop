@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import { ChevronRight, Folder, FolderOpen, File, FileType } from 'lucide-react'
 import { isPdfFile } from '../theme/ThemeContext'
 import { getFileStore, useFileStore } from '../files'
+import { openFileInEditor } from '../editor/openFileInEditor'
 import { useWorkspaceStore } from '../shared/workspaceStore'
 
 interface FileTreeItemProps {
@@ -10,6 +11,10 @@ interface FileTreeItemProps {
   onContextMenu?: (e: React.MouseEvent, nodeId: string, nodeType: string) => void
   renamingId?: string | null
   onRenameComplete?: () => void
+  /** 绑定到指定分屏窗格时，点击在该窗格打开 */
+  targetPaneId?: string
+  /** 分屏窗格内高亮当前文件（否则用全局 activeFileId） */
+  highlightFileId?: string | null
 }
 
 /** 系统 wiki 目录 — 侧栏默认折叠，减少占位 */
@@ -30,7 +35,7 @@ function isAncestorOf(nodes: Record<string, { parentId: string | null }>, folder
   return false
 }
 
-export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId, onRenameComplete }: FileTreeItemProps) {
+export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId, onRenameComplete, targetPaneId, highlightFileId }: FileTreeItemProps) {
   const [expanded, setExpanded] = useState(() =>
     folderInitiallyExpanded(depth, getFileStore().nodes[nodeId]?.name ?? ''),
   )
@@ -40,11 +45,12 @@ export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId,
   const node = useFileStore((s) => s.nodes[nodeId])
   const nodes = useFileStore((s) => s.nodes)
   const activeFileId = useFileStore((s) => s.activeFileId)
-  const openFile = useFileStore((s) => s.openFile)
   const renameNode = useFileStore((s) => s.renameNode)
 
+  const displayActiveId = highlightFileId !== undefined ? highlightFileId : activeFileId
+
   const isRenaming = renamingId === nodeId
-  const containsActive = node?.type === 'folder' && isAncestorOf(nodes, nodeId, activeFileId)
+  const containsActive = node?.type === 'folder' && isAncestorOf(nodes, nodeId, displayActiveId)
 
   useEffect(() => {
     if (isRenaming && inputRef.current) {
@@ -60,13 +66,13 @@ export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId,
     }
   }, [containsActive, node?.name])
 
-  const isActive = node?.type === 'file' && activeFileId === nodeId
+  const isActive = node?.type === 'file' && displayActiveId === nodeId
 
   useEffect(() => {
     if (isActive) {
       rowRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
     }
-  }, [isActive, activeFileId])
+  }, [isActive, displayActiveId])
 
   if (!node) return null
 
@@ -140,6 +146,8 @@ export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId,
             onContextMenu={onContextMenu}
             renamingId={renamingId}
             onRenameComplete={onRenameComplete}
+            targetPaneId={targetPaneId}
+            highlightFileId={highlightFileId}
           />
         ))}
       </div>
@@ -152,8 +160,23 @@ export default function FileTreeItem({ nodeId, depth, onContextMenu, renamingId,
       ref={rowRef}
       className={`tree-item flex items-center gap-1.5 py-1.5 px-2 rounded-xl cursor-pointer mx-1 ${isActive ? 'tree-item-active' : ''}`}
       style={{ paddingLeft: depth * 16 + 8 }}
-      onClick={() => {
-        void Promise.resolve(openFile(nodeId))
+      onClick={(e) => {
+        const newPane = !targetPaneId && (e.ctrlKey || e.metaKey)
+        void openFileInEditor(nodeId, {
+          newPane,
+          paneId: targetPaneId,
+        })
+        if (useWorkspaceStore.getState().mode === 'chat') {
+          useWorkspaceStore.getState().setMode('read')
+        }
+      }}
+      onAuxClick={(e) => {
+        if (e.button !== 1) return
+        e.preventDefault()
+        void openFileInEditor(nodeId, {
+          newPane: !targetPaneId,
+          paneId: targetPaneId,
+        })
         if (useWorkspaceStore.getState().mode === 'chat') {
           useWorkspaceStore.getState().setMode('read')
         }

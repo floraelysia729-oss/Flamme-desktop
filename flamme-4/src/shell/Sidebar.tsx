@@ -139,15 +139,15 @@ export default function Sidebar() {
 
   return (
     <>
-      <div className="sidebar-header flex items-center justify-between px-3 py-3 font-medium uppercase tracking-widest text-[var(--ink-on-glass,var(--ink))] border-b border-white/[0.06]">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="sidebar-header flex items-center justify-between px-2 py-2 font-medium uppercase tracking-widest text-[var(--ink-on-glass,var(--ink))] border-b border-white/[0.06]">
+        <div className="flex items-center gap-1.5 min-w-0">
           <FlammeLogo variant="icon" />
           <span className="truncate">文件</span>
         </div>
-        <div className="flex items-center gap-0.5">
+        <div className="flex items-center gap-0.5 shrink-0">
           <button
             type="button"
-            className="tool-btn p-1.5 rounded-lg"
+            className="tool-btn tool-btn--icon"
             onClick={toggleSidebar}
             title="折叠文件树 (Ctrl+B)"
           >
@@ -155,7 +155,7 @@ export default function Sidebar() {
           </button>
           <button
             type="button"
-            className="tool-btn p-1.5 rounded-lg"
+            className="tool-btn tool-btn--icon"
             onClick={handleNewFile}
             title="新建文件"
             disabled={isVaultMode() && !vaultReady}

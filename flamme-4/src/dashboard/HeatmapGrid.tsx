@@ -11,7 +11,11 @@ interface Props {
 const WEEKS = 53
 const CELL = 12
 const GAP = 2
-const HEAT_ALPHAS = [0.12, 0.28, 0.45, 0.62, 0.78] as const
+const HEAT_COLOR = 'var(--dashboard-heat-color, var(--theme-c2, var(--accent-warm)))'
+const HEAT_COLOR_HIGH =
+  'var(--dashboard-heat-color-high, var(--dashboard-heat-color, var(--theme-c4, var(--accent-warm))))'
+const HEAT_EMPTY_ALPHA = 0.1
+const HEAT_LEGEND_FRACTIONS = [0, 0.25, 0.5, 0.75, 1] as const
 const ROW_LABELS = [
   { row: 1, label: '一' },
   { row: 3, label: '三' },
@@ -26,17 +30,38 @@ function formatLocalDate(d: Date): string {
   return `${y}-${String(m).padStart(2, '0')}-${String(day).padStart(2, '0')}`
 }
 
-function heatAlpha(count: number): number {
-  if (count === 0) return 0.12
-  if (count <= 2) return HEAT_ALPHAS[1]
-  if (count <= 5) return HEAT_ALPHAS[2]
-  if (count <= 8) return HEAT_ALPHAS[3]
-  return HEAT_ALPHAS[4]
+/** 对数映射 0‥1，使 1 / 10 / 100 / 300 等同日量级可区分 */
+function heatIntensity(count: number, dataMax: number): number {
+  if (count <= 0) return 0
+  return Math.log10(count + 1) / Math.log10(dataMax + 1)
 }
 
-function getColor(count: number): string {
-  const alpha = heatAlpha(count)
-  return `oklch(from var(--theme-c1, var(--accent)) l c h / ${alpha})`
+function heatAlpha(count: number, dataMax: number): number {
+  if (count === 0) return HEAT_EMPTY_ALPHA
+  const t = heatIntensity(count, dataMax)
+  return 0.34 + t * 0.62
+}
+
+function oklchHeat(base: string, alpha: number): string {
+  return `oklch(from ${base} l c h / ${alpha})`
+}
+
+function getColor(count: number, dataMax: number): string {
+  const alpha = heatAlpha(count, dataMax)
+  if (count === 0) return oklchHeat(HEAT_COLOR, HEAT_EMPTY_ALPHA)
+
+  const t = heatIntensity(count, dataMax)
+  const base = oklchHeat(HEAT_COLOR, alpha)
+  if (t < 0.68) return base
+
+  const mix = ((t - 0.68) / 0.32) * 100
+  const high = oklchHeat(HEAT_COLOR_HIGH, alpha)
+  return `color-mix(in oklch, ${base} ${100 - mix}%, ${high} ${mix}%)`
+}
+
+function countForLegendFraction(fraction: number, dataMax: number): number {
+  if (fraction <= 0) return 0
+  return Math.max(1, Math.round(10 ** (fraction * Math.log10(dataMax + 1)) - 1))
 }
 
 export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Props) {
@@ -84,6 +109,11 @@ export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Pro
     return { cells: out, monthTicks: ticks, stats: { bestDay, bestMonthLabel } }
   }, [byDate])
 
+  const dataMax = useMemo(
+    () => Math.max(1, ...cells.map((c) => c.count)),
+    [cells],
+  )
+
   const labelW = 14
   const topH = 12
   const gridW = WEEKS * (CELL + GAP)
@@ -108,15 +138,20 @@ export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Pro
         </div>
         <div className="flex items-center gap-1 text-[9px] text-[var(--ink-muted)] opacity-70">
           <span>少</span>
-          {HEAT_ALPHAS.map((a, i) => (
+          {HEAT_LEGEND_FRACTIONS.map((fraction) => (
             <span
-              key={i}
+              key={fraction}
               className="inline-block rounded-sm"
               style={{
                 width: 10,
                 height: 10,
-                background: `oklch(from var(--theme-c1, var(--accent)) l c h / ${a})`,
+                background: getColor(countForLegendFraction(fraction, dataMax), dataMax),
               }}
+              title={
+                fraction === 0
+                  ? '0 次'
+                  : `${countForLegendFraction(fraction, dataMax)} 次`
+              }
             />
           ))}
           <span>多</span>
@@ -159,7 +194,7 @@ export default function HeatmapGrid({ data, streak, weekActivity, animKey }: Pro
               width={CELL}
               height={CELL}
               rx={2}
-              fill={getColor(c.count)}
+              fill={getColor(c.count, dataMax)}
               className="dashboard-heat-cell"
             >
               <title>{c.date}: {c.count} 次</title>

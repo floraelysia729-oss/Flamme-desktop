@@ -1,7 +1,10 @@
 import { create } from 'zustand'
+import type { ChatMessage } from '../types'
 import type { EvidenceItem, LearnNote } from './types'
 import { emptyLearnNote } from './noteTemplate'
 import { normalizeLearnNote } from './migrateLearnMind'
+import { resetMasteryQuiz } from './masteryQuizStore'
+import { getQaSummariesContent, rebuildQaMessageLinks } from './qaMessageLinks'
 
 interface LearnState {
   learnNote: LearnNote
@@ -12,12 +15,16 @@ interface LearnState {
   lastArchivedMessageIdx: number
   contextPressure: 'warn' | 'critical' | null
   driftToast: string | null
+  qaMessageLinks: Record<number, number>
   setLearnNote: (note: LearnNote, fromUser?: boolean) => void
   mergeLearnNoteFromAi: (note: LearnNote, drift?: string | null) => 'applied' | 'skipped'
   setEvidencePack: (items: EvidenceItem[]) => void
   setArchiveMeta: (path: string | null, at: string | null, idx: number) => void
   setContextPressure: (level: 'warn' | 'critical' | null) => void
   setDriftToast: (msg: string | null) => void
+  setQaMessageLink: (round: number, messageIdx: number) => void
+  rebuildQaMessageLinksFromMessages: (messages: ChatMessage[], note?: LearnNote) => void
+  getMessageIdxForRound: (round: number) => number | undefined
   resetLearn: (topic?: string) => void
 }
 
@@ -30,6 +37,7 @@ export const useLearnStore = create<LearnState>((set, get) => ({
   lastArchivedMessageIdx: 0,
   contextPressure: null,
   driftToast: null,
+  qaMessageLinks: {},
 
   setLearnNote: (note, fromUser = false) =>
     set({ learnNote: note, userEdited: fromUser ? true : get().userEdited }),
@@ -54,7 +62,21 @@ export const useLearnStore = create<LearnState>((set, get) => ({
 
   setDriftToast: (msg) => set({ driftToast: msg }),
 
-  resetLearn: (topic) =>
+  setQaMessageLink: (round, messageIdx) =>
+    set((s) => ({
+      qaMessageLinks: { ...s.qaMessageLinks, [round]: messageIdx },
+    })),
+
+  rebuildQaMessageLinksFromMessages: (messages, note?) => {
+    const learnNote = note ?? get().learnNote
+    const qaContent = getQaSummariesContent(learnNote.sections)
+    set({ qaMessageLinks: rebuildQaMessageLinks(messages, qaContent) })
+  },
+
+  getMessageIdxForRound: (round) => get().qaMessageLinks[round],
+
+  resetLearn: (topic) => {
+    resetMasteryQuiz()
     set({
       learnNote: emptyLearnNote(topic),
       userEdited: false,
@@ -64,7 +86,9 @@ export const useLearnStore = create<LearnState>((set, get) => ({
       lastArchivedMessageIdx: 0,
       contextPressure: null,
       driftToast: null,
-    }),
+      qaMessageLinks: {},
+    })
+  },
 }))
 
 /** 从 API 加载 learn_mind / learn_note 字段 */

@@ -21,11 +21,11 @@ export default function SidebarRail() {
   }
 
   return (
-    <div className="flex flex-col items-center h-full py-3 gap-3">
+    <div className="flex flex-col items-center h-full py-2 gap-2">
       <FlammeLogo variant="icon" className="shrink-0" />
       <button
         type="button"
-        className="tool-btn p-2 rounded-lg"
+        className="tool-btn tool-btn--icon"
         onClick={toggleSidebar}
         title="展开文件树 (Ctrl+B)"
       >
@@ -33,7 +33,7 @@ export default function SidebarRail() {
       </button>
       <button
         type="button"
-        className="tool-btn p-2 rounded-lg opacity-80"
+        className="tool-btn tool-btn--icon opacity-80"
         onClick={toggleSidebar}
         title="文件"
       >

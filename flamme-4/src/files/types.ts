@@ -16,7 +16,8 @@ export interface FileStoreActions extends FileStoreState {
   renameNode: (id: string, newName: string) => void | Promise<void>
   deleteNode: (id: string) => void | Promise<void>
   moveNode?: (id: string, newParentId: string) => void
-  openFile: (id: string) => void | Promise<void>
+  openFile: (id: string, options?: { force?: boolean; prefetch?: boolean }) => void | Promise<void>
+  prefetchFile?: (id: string) => Promise<void>
   getChildren: (folderId: string) => VFSNode[]
   updateContent: (id: string, content: string) => void
 }

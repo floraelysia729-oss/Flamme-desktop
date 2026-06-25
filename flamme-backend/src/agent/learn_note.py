@@ -7,7 +7,11 @@ import re
 from datetime import datetime
 from typing import Any
 
-from src.agent.learn_mind import has_learning_signal
+from src.agent.learn_mind import (
+    has_learning_signal,
+    _GAP_SIGNAL,
+    _QUESTION_SIGNAL,
+)
 
 SECTION_IDS = (
     "knowledge_tree",
@@ -27,7 +31,9 @@ LEARN_NOTE_PROMPT = """你是学习过程记录员。维护四区块学习笔记
 ## 规则
 - 概念只能来自本轮对话，禁止凭常识扩目录
 - 增量合并旧笔记，禁止整树重写
+- **禁止**在对话中把 → 改为 ✓（掌握状态由用户主动卡片测验完成）
 - 同一主题在树中只出现一次：用户跟进漂移分支时，把 ○ 节点改为 →，禁止再追加同名节点
+- 用户提出新的子问题时：为子问题加 └─□ 节点，并将 → 移到该子节点
 - 漂移时 drift_branch 填新主题名；若树中尚无该节点才在 knowledge_tree 追加 └─○
 - qa_entry.question：≤30 字，只写核心问点，禁止复述用户原话
 - qa_entry.principle：≤60 字，一句结论，禁止抄助手长段
@@ -49,7 +55,6 @@ _LOW_SIGNAL = re.compile(
     re.IGNORECASE,
 )
 
-_GAP_SIGNAL = re.compile(r"不懂|不明白|没懂|困惑|糊涂|看不懂|不理解|搞不清", re.IGNORECASE)
 _WRONG_ASSUME = re.compile(r"是不是|对吗|难道|岂不是|所以.*就是|应该.*吧|是不是说|我理解成")
 _CORRECTION = re.compile(r"其实|并不是|不对|误区|容易错|注意|澄清|更准确|应该说|关键在于|别混淆")
 
@@ -121,6 +126,83 @@ def _promote_branch_to_current(content: str, topic: str) -> str:
     return _dedupe_knowledge_tree("\n".join(out))
 
 
+_STATUS_CHAR = {"learned": "✓", "current": "→", "todo": "□", "branch": "○"}
+
+
+def mark_label_status(content: str, label: str, status: str) -> str:
+    char = _STATUS_CHAR.get(status, "□")
+    out: list[str] = []
+    for line in (content or "").split("\n"):
+        st, lbl = _tree_line_parts(line)
+        if lbl and _similar_label(lbl, label):
+            m = re.match(r"^([├└│\s]*)", line)
+            indent = m.group(1) if m else ""
+            out.append(f"{indent}{char} {lbl}")
+        else:
+            out.append(line)
+    return _dedupe_knowledge_tree("\n".join(out))
+
+
+def find_current_label(content: str) -> str | None:
+    for line in reversed((content or "").split("\n")):
+        st, lbl = _tree_line_parts(line)
+        if st == "→" and lbl:
+            return lbl
+    return None
+
+
+def promote_first_todo_to_current(content: str) -> str:
+    lines = (content or "").split("\n")
+    for i, line in enumerate(lines):
+        st, lbl = _tree_line_parts(line)
+        if st == "□" and lbl:
+            m = re.match(r"^([├└│\s]*)", line)
+            indent = m.group(1) if m else ""
+            lines[i] = f"{indent}→ {lbl}"
+            return _dedupe_knowledge_tree("\n".join(lines))
+    return content
+
+
+def mark_node_learned(note: dict, target_label: str) -> dict:
+    """卡片测验全部通过后：目标节点 → ✓，并提升下一个 □ 为 →。"""
+    note = dict(note)
+    smap = _section_map(note)
+    tree_sec = smap.get("knowledge_tree")
+    if tree_sec and not tree_sec.get("locked"):
+        content = mark_label_status(tree_sec.get("content", ""), target_label, "learned")
+        content = promote_first_todo_to_current(content)
+        tree_sec["content"] = _dedupe_knowledge_tree(content)
+    note["sections"] = [smap[sid] for sid in SECTION_IDS if sid in smap]
+    note["version"] = int(note.get("version") or 0) + 1
+    note["updatedAt"] = datetime.now().isoformat()
+    return note
+
+
+def _format_learning_progress(focus: str) -> str:
+    return (
+        f"## 当前主题\n{focus}\n\n"
+        f"## 待解决\n\n"
+        f"## 下一步\n→ 点击知识树「正在学」节点进行掌握测验"
+    )
+
+
+def _apply_tree_chat_updates(content: str, focus: str, user_msg: str) -> str:
+    """对话驱动的结构更新（不改变 →/✓ 掌握状态）。"""
+    sub = _summarize_question(user_msg)
+    current = find_current_label(content) or focus
+    if (
+        _QUESTION_SIGNAL.search(user_msg or "")
+        and sub
+        and not _similar_label(sub, focus)
+        and not _similar_label(sub, current)
+        and not _label_in_tree(content, sub)
+    ):
+        content = (content.rstrip() + f"\n└─□ {sub}").strip()
+        content = _dedupe_knowledge_tree(content)
+        content = _promote_branch_to_current(content, sub)
+    return content
+
+
 def _compress_text(text: str, max_len: int) -> str:
     s = re.sub(r"\s+", " ", (text or "").strip())
     if len(s) <= max_len:
@@ -136,7 +218,7 @@ def _compress_text(text: str, max_len: int) -> str:
 def _summarize_question(user_msg: str) -> str:
     msg = (user_msg or "").strip()
     msg = re.sub(
-        r"^(请问|我想问|帮我|能不能|这里详细讲解|详细讲讲|麻烦|说一下)",
+        r"^(请问|我想问|帮我|能不能|这里详细讲解|详细讲讲|麻烦|说一下|讲讲)",
         "",
         msg,
     ).strip()
@@ -296,6 +378,23 @@ def _prepend_qa(existing: str, entry_block: str) -> str:
     return f"{entry_block}\n\n{body}"
 
 
+_DEFAULT_ROOT_TOPICS = frozenset({"未命名学习", "未命名主题"})
+
+
+def _is_placeholder_topic(topic: str) -> bool:
+    t = (topic or "").strip()
+    return not t or t in _DEFAULT_ROOT_TOPICS
+
+
+def _infer_root_topic(user_msg: str, current: str) -> str:
+    if not _is_placeholder_topic(current):
+        return (current or "").strip()[:80]
+    topic = _summarize_question(user_msg)
+    if topic and len(topic) >= 2:
+        return topic[:80]
+    return (current or "未命名学习").strip()[:80]
+
+
 def _detect_drift_heuristic(user_msg: str, root_topic: str) -> str | None:
     """轻量漂移检测：用户消息含明显不同主题词"""
     if not root_topic or len(root_topic) < 2:
@@ -322,6 +421,11 @@ def stabilize_note_merge(old: dict, parsed: dict, qa_round: int) -> tuple[dict, 
 
     if parsed.get("rootTopic"):
         note["rootTopic"] = str(parsed["rootTopic"])[:80]
+    if _is_placeholder_topic(note.get("rootTopic", "")):
+        note["rootTopic"] = _infer_root_topic(
+            str(parsed.get("_user_msg") or ""),
+            note.get("rootTopic", ""),
+        )
 
     drift_branch = parsed.get("drift_branch")
     if drift_branch and str(drift_branch).strip():
@@ -347,6 +451,9 @@ def stabilize_note_merge(old: dict, parsed: dict, qa_round: int) -> tuple[dict, 
             sec["content"] = str(parsed[key]).strip()[:8000]
 
     tree_sec = smap.get("knowledge_tree")
+    user_msg = str(parsed.get("_user_msg") or "")
+    focus = note.get("rootTopic", "")
+
     if tree_sec and not tree_sec.get("locked"):
         content = tree_sec.get("content", "")
         if drift_branch and str(drift_branch).strip():
@@ -357,7 +464,16 @@ def stabilize_note_merge(old: dict, parsed: dict, qa_round: int) -> tuple[dict, 
                 branch_line = f"└─○ {branch}"
                 if branch_line not in content:
                     content = (content.rstrip() + "\n" + branch_line).strip()
+        content = _apply_tree_chat_updates(content, focus, user_msg)
         tree_sec["content"] = _dedupe_knowledge_tree(content)
+
+    prog_sec = smap.get("learning_progress")
+    if prog_sec and not prog_sec.get("locked"):
+        prog_text = prog_sec.get("content") or ""
+        if not prog_text.strip() and not _is_placeholder_topic(focus):
+            prog_sec["content"] = _format_learning_progress(focus)
+        elif "## 掌握检验" in prog_text:
+            prog_sec["content"] = _format_learning_progress(focus)
 
     note["sections"] = [smap[sid] for sid in SECTION_IDS if sid in smap]
     note["qaRound"] = qa_round
@@ -375,7 +491,10 @@ def merge_note_heuristic(
 ) -> tuple[dict, str | None]:
     note = dict(old)
     smap = _section_map(note)
-    drift = _detect_drift_heuristic(user_msg, note.get("rootTopic", ""))
+    root_was_placeholder = _is_placeholder_topic(note.get("rootTopic", ""))
+    focus = _infer_root_topic(user_msg, note.get("rootTopic", ""))
+    note["rootTopic"] = focus
+    drift = None if root_was_placeholder else _detect_drift_heuristic(user_msg, focus)
 
     qa_sec = smap.get("qa_summaries")
     if qa_sec and not qa_sec.get("locked"):
@@ -386,14 +505,25 @@ def merge_note_heuristic(
     tree_sec = smap.get("knowledge_tree")
     if tree_sec and not tree_sec.get("locked"):
         content = tree_sec.get("content", "")
-        if drift:
+        if root_was_placeholder and not _is_placeholder_topic(focus):
+            if _label_in_tree(content, focus):
+                content = _promote_branch_to_current(content, focus)
+            else:
+                content = f"→ {focus}"
+        elif drift:
             if _label_in_tree(content, drift):
                 content = _promote_branch_to_current(content, drift)
             else:
                 branch_line = f"└─○ {drift}"
                 if branch_line not in content:
                     content = (content.rstrip() + "\n" + branch_line).strip()
+        else:
+            content = _apply_tree_chat_updates(content, focus, user_msg)
         tree_sec["content"] = _dedupe_knowledge_tree(content)
+
+    prog_sec = smap.get("learning_progress")
+    if prog_sec and not prog_sec.get("locked") and not _is_placeholder_topic(focus):
+        prog_sec["content"] = _format_learning_progress(focus)
 
     note["sections"] = [smap[sid] for sid in SECTION_IDS if sid in smap]
     note["qaRound"] = qa_round

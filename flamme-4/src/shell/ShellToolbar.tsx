@@ -11,10 +11,10 @@ interface Props {
 export default function ShellToolbar({ left, center, right }: Props) {
   const { glass } = useTheme()
   return (
-    <div className={`${glass.toolbar} flex items-center gap-2 px-3 py-2 rounded-xl shrink-0`}>
-      {left && <div className="flex items-center gap-1.5 shrink-0">{left}</div>}
+    <div className={`${glass.toolbar} flex items-center rounded-xl shrink-0`}>
+      {left && <div className="flex items-center gap-1 shrink-0">{left}</div>}
       {center && (
-        <div className="chrome-title flex-1 min-w-0 text-center text-[12px] truncate select-none">
+        <div className="chrome-title flex-1 min-w-0 text-center text-[12px] truncate select-none flex items-center justify-center">
           {center}
         </div>
       )}

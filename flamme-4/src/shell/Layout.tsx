@@ -5,7 +5,7 @@ import AppShell from './AppShell'
 import Toolbar from './Toolbar'
 import Sidebar from './Sidebar'
 import SidebarRail from './SidebarRail'
-import EditorView from '../editor/EditorView'
+import EditorWorkspace from '../editor/EditorWorkspace'
 import ResizableChatAside, { loadChatPanelWidth } from '../chat/ResizableChatAside'
 
 const ChatPanel = lazy(() => import('../chat/ChatPanel'))
@@ -43,26 +43,26 @@ export default function Layout({ onSwitchToDashboard, onThemeCycle, onOpenSettin
   return (
     <AppShell variant="editor">
       <aside
-        className={`${sidebarCollapsed ? 'w-12' : 'w-56'} shrink-0 flex flex-col m-1.5 mr-0 min-h-0 transition-[width] duration-200`}
+        className={`${sidebarCollapsed ? 'w-10' : 'w-44'} shrink-0 flex flex-col m-1 mr-0 min-h-0 transition-[width] duration-200`}
       >
         <div className={`${glass.card} flex flex-col flex-1 min-h-0 overflow-hidden rounded-xl`}>
           {sidebarCollapsed ? <SidebarRail /> : <Sidebar />}
         </div>
       </aside>
 
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 m-1.5 ml-1 gap-1.5">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 m-1 ml-0.5 gap-1">
         <Toolbar
           onSwitchToDashboard={onSwitchToDashboard}
           onThemeCycle={onThemeCycle}
           onOpenSettings={onOpenSettings}
         />
-        <div className="flex flex-1 min-h-0 min-w-0 gap-1.5 overflow-hidden">
+        <div className="flex flex-1 min-h-0 min-w-0 gap-1 overflow-hidden">
           <div
             className={`${glass.card} flex-1 min-h-0 min-w-0 basis-0 overflow-hidden rounded-xl editor-surface ${
               mode === 'chat' ? 'hidden' : ''
             }`}
           >
-            <EditorView />
+            <EditorWorkspace />
           </div>
           {mode === 'chat' ? (
             <div

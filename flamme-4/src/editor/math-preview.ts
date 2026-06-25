@@ -17,6 +17,8 @@ import {
 import { RangeSetBuilder } from '@codemirror/state'
 import { buildPreviewWidgetMask } from './preview-context'
 import { scanMathRanges } from './math-ranges'
+import { finishPendingDecorations, type PendingDecoration } from './decoration-ranges'
+import { widgetPreviewUpdate } from './preview-update'
 
 const hideSource = Decoration.replace({})
 
@@ -66,7 +68,7 @@ function spansMultipleLines(view: EditorView, from: number, to: number): boolean
 /** 跨行 $$...$$：在行尾插入块级 Widget，按行隐藏源码（replace 不跨 \\n） */
 function pushMultilineMath(
   view: EditorView,
-  pending: { from: number; to: number; deco: Decoration }[],
+  pending: PendingDecoration[],
   from: number,
   to: number,
   html: string,
@@ -92,7 +94,7 @@ function pushMultilineMath(
     const lineStart = Math.max(line.from, from)
     const lineEnd = Math.min(line.to, to)
     if (lineStart < lineEnd) {
-      pending.push({ from: lineStart, to: lineEnd, deco: hideSource })
+      pending.push({ from: lineStart, to: lineEnd, replace: true, deco: hideSource })
     }
     if (line.to >= to) break
     pos = line.to + 1
@@ -103,7 +105,7 @@ function buildMathDecorations(view: EditorView): DecorationSet {
   const head = view.state.selection.main.head
   const doc = view.state.doc.toString()
   const mask = buildPreviewWidgetMask(view, head)
-  const pending: { from: number; to: number; deco: Decoration }[] = []
+  const pending: PendingDecoration[] = []
 
   for (const { from, to, math, display } of mask.math) {
     const html = renderKaTeX(math, display)
@@ -113,6 +115,7 @@ function buildMathDecorations(view: EditorView): DecorationSet {
       pending.push({
         from,
         to,
+        replace: true,
         deco: Decoration.replace({
           widget: new MathWidget(html, display),
           inclusive: false,
@@ -132,16 +135,7 @@ function buildMathDecorations(view: EditorView): DecorationSet {
     })
   }
 
-  pending.sort((a, b) => a.from - b.from || a.to - b.to)
-
-  const builder = new RangeSetBuilder<Decoration>()
-  let lastTo = 0
-  for (const { from, to, deco } of pending) {
-    if (from < lastTo) continue
-    builder.add(from, to, deco)
-    lastTo = to
-  }
-  return builder.finish()
+  return finishPendingDecorations(view, pending)
 }
 
 export const mathPreviewPlugin = ViewPlugin.fromClass(
@@ -153,9 +147,7 @@ export const mathPreviewPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildMathDecorations(update.view)
-      }
+      widgetPreviewUpdate(update, this, buildMathDecorations)
     }
   },
   { decorations: (v) => v.decorations },

@@ -3,6 +3,8 @@ import { scanGfmTableBlocks, isGfmTableStart } from '../editor/table-ranges'
 import { clearGfmTableHtmlCache, gfmTableMarkdownToHtml } from './markdownTableHtml'
 import { resolveAnchorPos, scanInternalMdLinks } from './markdownAnchors'
 import { renderChatMarkdown } from '../chat/renderMarkdown'
+import { renderMarkdown } from './renderMarkdown'
+import { highlightCodeSource } from './markdownCodeHighlight'
 
 const NOVA_TABLE = `| 题型 | 分值 | 考查重点 |
 |------|:----:|----------|
@@ -45,5 +47,24 @@ describe('renderChatMarkdown', () => {
     expect(html).toContain('chat-md-anchor')
     expect(html).toContain('data-md-anchor="overview"')
     expect(html).not.toContain('data-doc-href="overview"')
+  })
+
+  it('renders fenced code blocks with hljs highlighting', () => {
+    const md = '```javascript\nconst x = 1\nconsole.log(x)\n```'
+    const html = renderChatMarkdown(md)
+    expect(html).toContain('md-code-block')
+    expect(html).toContain('hljs')
+    expect(html).toContain('language-javascript')
+    expect(html).toContain('console')
+    expect(highlightCodeSource('const x = 1', 'javascript')).toContain('hljs-')
+  })
+})
+
+describe('renderMarkdown', () => {
+  it('highlights code blocks globally outside chat link mode', () => {
+    const html = renderMarkdown('```python\nprint("hi")\n```')
+    expect(html).toContain('md-code-block')
+    expect(html).toContain('language-python')
+    expect(html).not.toContain('chat-doc-link')
   })
 })

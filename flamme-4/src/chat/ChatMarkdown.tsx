@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { resolveLink } from '../api/bridge'
 import { useConnectionStore } from '../api/connection'
 import { getFileStore } from '../files'
+import { openFileInEditor } from '../editor/openFileInEditor'
 import { useWorkspaceStore } from '../shared/workspaceStore'
 import { renderChatMarkdown } from './renderMarkdown'
 import { parseWikilinkTarget, resolveDocLinkFromElement } from './resolveVaultLink'
@@ -57,7 +58,7 @@ export default function ChatMarkdown({ content, skipMath = false }: Props) {
     }
     setLinkHint('')
     try {
-      await Promise.resolve(getFileStore().openFile(path))
+      await openFileInEditor(path)
       useWorkspaceStore.getState().setMode('split')
     } catch {
       setLinkHint('打开文件失败')

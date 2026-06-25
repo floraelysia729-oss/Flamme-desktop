@@ -472,6 +472,7 @@ class Orchestrator:
             )
 
         max_turns = 200  # 安全上限，正常情况下 LLM 无工具调用时自然退出
+        learn_assistant_acc: list[str] = []
         for turn in range(max_turns):
             # 2. 流式调用 LLM（实时输出 token），429 自动重试
             try:
@@ -523,18 +524,23 @@ class Orchestrator:
             # 3. 无 tool call → 保存后退出（token 已在上方实时 yield）
             if not is_tool_mode:
                 full_text = "".join(content_parts)
+                if mode == "learn" and full_text.strip():
+                    learn_assistant_acc.append(full_text)
+                combined_assistant = "\n\n".join(
+                    p for p in learn_assistant_acc if p.strip()
+                ).strip()
                 suggestions, clean_text = self._extract_suggestions(full_text)
                 if suggestions:
                     yield suggestions
 
-                if mode == "learn" and full_text:
+                if mode == "learn" and combined_assistant:
                     if self._conv:
                         self._conv.save_turn(session_id, "assistant", clean_text, mode=mode)
                     new_note, note_updated, drift = generate_learn_note(
                         self._llm,
                         ctx.learn_note,
                         user_input,
-                        full_text,
+                        combined_assistant,
                         ctx.evidence_dicts(),
                     )
                     ctx.learn_note = new_note
@@ -567,6 +573,8 @@ class Orchestrator:
 
             # 4. 有 tool call → 构造 assistant message 并执行工具
             full_content = "".join(content_parts)
+            if mode == "learn" and full_content.strip():
+                learn_assistant_acc.append(full_content)
             tool_call_msgs = []
             for idx in sorted(tool_calls_acc.keys()):
                 tc = tool_calls_acc[idx]

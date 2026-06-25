@@ -1,13 +1,6 @@
-import {
-  Plus,
-  FolderPlus,
-  FolderOpen,
-  Palette,
-  LayoutDashboard,
-  Settings,
-} from 'lucide-react'
+import { Palette, LayoutDashboard, Settings, Columns2 } from 'lucide-react'
 import { useFileStore, isVaultMode } from '../files'
-import { openLocalDocument } from '../api/bridge'
+import { useEditorSplitStore } from '../editor/editorSplitStore'
 import { useWorkspaceStore } from '../shared/workspaceStore'
 import { useTheme } from '../theme/ThemeContext'
 import ShellToolbar from './ShellToolbar'
@@ -27,31 +20,10 @@ export default function Toolbar({
   onOpenSettings,
 }: ToolbarProps) {
   const workspaceMode = useWorkspaceStore((s) => s.mode)
-  const rootId = useFileStore((s) => s.rootId)
-  const createFile = useFileStore((s) => s.createFile)
-  const createFolder = useFileStore((s) => s.createFolder)
-  const openFile = useFileStore((s) => s.openFile)
   const activeFileId = useFileStore((s) => s.activeFileId)
   const nodes = useFileStore((s) => s.nodes)
   const vaultReady = useFileStore((s) => ('ready' in s ? s.ready : true))
   const { currentThemeName } = useTheme()
-
-  const handleNewFile = () => {
-    if (!rootId) return
-    void Promise.resolve(createFile(rootId, 'untitled.md', ''))
-  }
-
-  const handleNewFolder = () => {
-    if (!rootId) return
-    void Promise.resolve(createFolder(rootId, '新文件夹'))
-  }
-
-  const handleOpen = async () => {
-    const result = await openLocalDocument()
-    if (!result || !rootId) return
-    const id = await Promise.resolve(createFile(rootId, result.name, result.content))
-    await Promise.resolve(openFile(id))
-  }
 
   const fileName = activeFileId ? nodes[activeFileId]?.name : null
   const centerLabel =
@@ -59,24 +31,24 @@ export default function Toolbar({
       ? `对话 · ${fileName}`
       : fileName ?? `主题 · ${currentThemeName}`
   const centerTitle = fileName
-    ? `${fileName} · 链接：Ctrl+点击 / 右键 · 构建 ${EDITOR_PREVIEW_BUILD}`
-    : `链接：Ctrl+点击 / 右键 · 构建 ${EDITOR_PREVIEW_BUILD}`
+    ? `${fileName} · 链接：Ctrl+点击 / 右键 · 分屏：Ctrl+点击侧栏 / 中键 / Ctrl+Shift+\\ · 构建 ${EDITOR_PREVIEW_BUILD}`
+    : `链接：Ctrl+点击 / 右键 · 分屏：Ctrl+点击侧栏 / 中键 · 构建 ${EDITOR_PREVIEW_BUILD}`
   const disabled = isVaultMode() && !vaultReady
 
-  const btn = 'tool-btn p-2 rounded-lg'
+  const btn = 'tool-btn tool-btn--icon'
 
   return (
     <ShellToolbar
       left={
         <>
-          <button type="button" className={btn} onClick={handleNewFile} title="新建文件" disabled={disabled}>
-            <Plus size={16} strokeWidth={2.25} />
-          </button>
-          <button type="button" className={btn} onClick={handleNewFolder} title="新建文件夹" disabled={disabled}>
-            <FolderPlus size={16} strokeWidth={2.25} />
-          </button>
-          <button type="button" className={btn} onClick={() => void handleOpen()} title="打开文件" disabled={disabled}>
-            <FolderOpen size={16} strokeWidth={2.25} />
+          <button
+            type="button"
+            className={btn}
+            onClick={() => useEditorSplitStore.getState().splitRight()}
+            title="向右分屏 (Ctrl+Shift+\)"
+            disabled={disabled || !activeFileId}
+          >
+            <Columns2 size={16} strokeWidth={2.25} />
           </button>
           <WorkspaceModeToggle />
         </>

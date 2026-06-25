@@ -294,5 +294,28 @@ class ConversationStore:
         detail = self.get_session_detail(session_id)
         return [m for m in detail.get("messages", []) if m["role"] in ("user", "assistant")]
 
+    def truncate_from_message_index(self, session_id: str, message_index: int) -> int:
+        """删除 message_index 及之后的消息（与前端 messages 数组下标对齐）。返回删除条数。"""
+        if message_index < 0:
+            return 0
+        rows = self._conn.execute(
+            """SELECT id, created_at FROM conversations
+               WHERE session_id = ? AND role IN ('user', 'assistant')
+               ORDER BY created_at ASC, id ASC""",
+            (session_id,),
+        ).fetchall()
+        if message_index >= len(rows):
+            return 0
+        cutoff = rows[message_index]["created_at"]
+        cur = self._conn.execute(
+            """DELETE FROM conversations
+               WHERE session_id = ? AND role IN ('user', 'assistant')
+               AND created_at >= ?""",
+            (session_id, cutoff),
+        )
+        self._touch_meta(session_id)
+        self._conn.commit()
+        return cur.rowcount
+
     def close(self):
         self._conn.close()

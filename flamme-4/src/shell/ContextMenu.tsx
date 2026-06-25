@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface MenuItem {
   label: string
@@ -33,10 +34,10 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
     }
   }, [onClose])
 
-  return (
+  return createPortal(
     <div
       ref={menuRef}
-      className="ctx-menu glass-panel-sm fixed z-50 rounded-2xl p-1.5 min-w-[170px]"
+      className="ctx-menu glass-panel-sm fixed z-[600] rounded-2xl p-1.5 min-w-[170px]"
       style={{ left: x, top: y }}
     >
       {items.map((item) => (
@@ -51,6 +52,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
           {item.label}
         </div>
       ))}
-    </div>
+    </div>,
+    document.body,
   )
 }

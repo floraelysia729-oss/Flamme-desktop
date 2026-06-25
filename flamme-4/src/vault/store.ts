@@ -12,6 +12,9 @@ import {
   writeVaultFile,
 } from '../api/bridge'
 import { entriesToNodes, firstFilePath, VAULT_ROOT_ID } from './tree'
+import { useConnectionStore } from '../api/connection'
+import { persistVaultActiveFile, useVaultUiStore } from './vaultUiStore'
+import { useEditorSplitStore, getPaneActiveFile } from '../editor/editorSplitStore'
 
 interface VaultActions extends VFSState {
   ready: boolean
@@ -23,7 +26,8 @@ interface VaultActions extends VFSState {
   renameNode: (id: string, newName: string) => Promise<void>
   deleteNode: (id: string) => Promise<void>
   moveNode: (id: string, newParentId: string) => void
-  openFile: (id: string, options?: { force?: boolean }) => Promise<void>
+  openFile: (id: string, options?: { force?: boolean; prefetch?: boolean }) => Promise<void>
+  prefetchFile: (id: string) => Promise<void>
   getChildren: (folderId: string) => VFSNode[]
   updateContent: (id: string, content: string) => void
   saveActiveFile: () => Promise<void>
@@ -48,6 +52,22 @@ export const useVaultStore = create<VaultActions>()((set, get) => ({
         }
       }
       let activeFileId = state.activeFileId
+      const vaultPath = useConnectionStore.getState().vaultPath
+      const split = useEditorSplitStore.getState()
+      if (split._hydrated) {
+        split.sanitizePanes(nodes)
+        const focused = split.panes.find((p) => p.id === split.focusedPaneId)
+        const tabId = focused ? getPaneActiveFile(focused) : null
+        if (tabId && nodes[tabId]?.type === 'file') {
+          activeFileId = tabId
+        }
+      }
+      if (!activeFileId && vaultPath.trim()) {
+        const restored = useVaultUiStore.getState().getLastActiveFile(vaultPath)
+        if (restored && nodes[restored]?.type === 'file') {
+          activeFileId = restored
+        }
+      }
       if (activeFileId && !nodes[activeFileId]) {
         activeFileId = firstFilePath(nodes)
       }
@@ -56,7 +76,10 @@ export const useVaultStore = create<VaultActions>()((set, get) => ({
       }
       set({ nodes, rootId: VAULT_ROOT_ID, activeFileId, ready: true, error: null })
       if (activeFileId) {
-        await get().openFile(activeFileId, { force: true })
+        const active = get().nodes[activeFileId]
+        if (active?.type === 'file' && active.content === undefined) {
+          await get().openFile(activeFileId)
+        }
       }
     } catch (e) {
       set({
@@ -97,20 +120,25 @@ export const useVaultStore = create<VaultActions>()((set, get) => ({
   },
 
   async renameNode(id, newName) {
+    const wasActive = get().activeFileId === id
     const newPath = await renameVaultEntry(id, newName)
-    await get().refreshTree()
-    const state = get()
-    if (state.activeFileId === id) {
+    if (wasActive) {
       set({ activeFileId: newPath })
+      persistVaultActiveFile(newPath)
     }
+    useEditorSplitStore.getState().remapFileId(id, newPath)
+    await get().refreshTree()
   },
 
   async deleteNode(id) {
     await deleteVaultEntry(id)
     const wasActive = get().activeFileId === id
+    useEditorSplitStore.getState().removeFileFromPanes(id)
     await get().refreshTree()
     if (wasActive) {
-      set({ activeFileId: firstFilePath(get().nodes) })
+      const next = firstFilePath(get().nodes)
+      set({ activeFileId: next })
+      persistVaultActiveFile(next)
     }
   },
 
@@ -122,12 +150,29 @@ export const useVaultStore = create<VaultActions>()((set, get) => ({
     const node = get().nodes[id]
     if (!node || node.type !== 'file') return
     if (/\.pdf$/i.test(node.name)) {
-      set({ activeFileId: id })
+      if (!options?.prefetch) {
+        set({ activeFileId: id })
+        persistVaultActiveFile(id)
+      }
       return
     }
     try {
       const content = await readVaultFile(id)
-      if (!options?.force && node.content === content && get().activeFileId === id) {
+      if (
+        !options?.force &&
+        !options?.prefetch &&
+        node.content === content &&
+        get().activeFileId === id
+      ) {
+        return
+      }
+      if (options?.prefetch) {
+        set((state) => ({
+          nodes: {
+            ...state.nodes,
+            [id]: { ...node, content },
+          },
+        }))
         return
       }
       set((state) => ({
@@ -137,9 +182,14 @@ export const useVaultStore = create<VaultActions>()((set, get) => ({
           [id]: { ...node, content },
         },
       }))
+      persistVaultActiveFile(id)
     } catch (e) {
       set({ error: e instanceof Error ? e.message : '打开文件失败' })
     }
+  },
+
+  async prefetchFile(id) {
+    await get().openFile(id, { prefetch: true })
   },
 
   getChildren(folderId) {

@@ -15,6 +15,7 @@ import {
   scanFrontmatter,
   type FrontmatterField,
 } from './frontmatter-ranges'
+import { widgetPreviewUpdate } from './preview-update'
 
 function frontmatterLines(view: EditorView, from: number, to: number) {
   const lines: ReturnType<EditorView['state']['doc']['lineAt']>[] = []
@@ -160,9 +161,7 @@ export const frontmatterPreviewPlugin = ViewPlugin.fromClass(
     }
 
     update(update: ViewUpdate) {
-      if (update.docChanged || update.viewportChanged || update.selectionSet) {
-        this.decorations = buildFrontmatterDecorations(update.view)
-      }
+      widgetPreviewUpdate(update, this, buildFrontmatterDecorations)
     }
   },
   { decorations: (v) => v.decorations },

@@ -14,8 +14,11 @@ import { blockStylePlugin } from './block-styles'
 import { htmlPreviewPlugin } from './html-preview'
 import { mathPreviewPlugin } from './math-preview'
 import { tablePreviewPlugin } from './table-preview'
+import { codeBlockPreviewPlugin } from './code-block-preview'
 import { anchorLinkPlugin, anchorClickHandler } from './anchor-nav'
 import { editorScrollHandler, editorSelectionScrollHandler } from './editorScrollHandler'
+import { selectionQuoteSync } from './selectionQuote'
+import { quoteHighlightPlugin } from './quote-highlight'
 import { editorThemeCompartment, highlightCompartment } from './extensions'
 
 export function createEditor(
@@ -37,6 +40,7 @@ export function createEditor(
     mathPreviewPlugin,
     htmlPreviewPlugin,
     tablePreviewPlugin,
+    codeBlockPreviewPlugin,
     anchorLinkPlugin,
     wikilinkPlugin,
     wikilinkHoverPlugin,
@@ -44,6 +48,8 @@ export function createEditor(
     anchorClickHandler,
     editorScrollHandler,
     editorSelectionScrollHandler,
+    selectionQuoteSync,
+    quoteHighlightPlugin,
     blockStylePlugin,
   ]
 
